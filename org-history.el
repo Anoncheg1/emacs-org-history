@@ -57,11 +57,13 @@
 ;; - make it work with outline mode.
 ;; - command to add current folder to list
 ;; - tests for -outlines  functions and itegral tests for minor mode
-
+;; - now we check if org-history-hook-for-after-save is bound as local
+;;  or global hook. Why we need mode? how they work togeter?
 ;;; Code:
 
 (require 'vc)
 (require 'vc-git)
+(require 'org)
 (require 'org-history-outline)
 (require 'org-history-debug)
 
@@ -466,7 +468,8 @@ We ue `y-or-n-p' to ask user at init repo and at new commit it
   "Triggered after org-cycle. Checks if user interactively unfolded a heading.
 Reliably check for interactive execution using :around advice."
   ;; 1. Check interactivity FIRST while org-cycle is at the top of the stack
-  (let ((interactive-call (called-interactively-p 'any)))
+  (let ((interactive-call (called-interactively-p 'any))
+        (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save)))
 
     ;; 2. Run the original org-cycle command so the heading actually changes state
     (apply orig-fun args)
@@ -476,7 +479,15 @@ Reliably check for interactive execution using :around advice."
              (org-at-heading-p)		; 2. Only run if cursor is on a heading
              (not (save-excursion		; 3. Ensure heading is currently open
                     (end-of-line)
-                    (org-fold-folded-p nil 'headline))))
+                    (org-fold-folded-p nil 'headline)))
+             (or (eq hook-placed :local)
+                 (eq hook-placed :both)
+                 (and (eq hook-placed :global)
+                      (catch 'found
+                        (dolist (path org-history-directories)
+                          (when (file-equal-p dir path)
+                            (throw 'found t)))
+                        nil))))
     (let ((start (save-excursion (forward-line 1) (point)))
           (end (save-excursion (org-end-of-subtree t t) (point))))
       (org-history-outline--add-dates start end))
