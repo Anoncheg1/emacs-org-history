@@ -1,5 +1,9 @@
 ;;; org-history-debug.el --- Debug in separate buffer if enabled-*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
+;; SPDX-License-Identifier: AGPL-3.0-or-later
+;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
+
 ;;; Commentary:
 
 ;; Check if file is tracked:
@@ -155,7 +159,7 @@ Return last argument, but should not be used for return value."
                     (insert result-string)))))))))
   (car (reverse args)))
 
-(defun org-history--vc-git-status ()
+(defun org-history-debug--vc-git-status ()
   "Return git status string."
   (let ((buf-name " *git-status-temp*")) ; Leading space hides buffer from list
     (if (eq (vc-responsible-backend default-directory) 'Git)
@@ -174,6 +178,21 @@ Return last argument, but should not be used for return value."
       "Not a Git repository.")))
 
 
+(defun org-history-debug--vc-git-log-to-messages ()
+  "Fetch a beautifully formatted Git graph log string and print it to *Messages*."
+  (interactive)
+  (unless buffer-file-name
+    (user-error "Current buffer is not visiting a file"))
+
+  (if (not (eq (vc-backend buffer-file-name) 'Git))
+      (message "This file is not tracked by Git.")
+    (let ((default-directory (file-name-directory buffer-file-name)))
+      (with-temp-buffer
+        ;; Arguments: buffer, okstatus, file(s), git-commands...
+        (vc-git-command (current-buffer) 0 nil
+                        "log" "-n" "5" "--oneline" "--graph" "--decorate")
+
+        (message "Recent Git Commits:\n%s" (string-trim (buffer-string)))))))
 
 (provide 'org-history-debug)
 

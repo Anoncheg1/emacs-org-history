@@ -5,9 +5,11 @@
 (require 'org-history-debug)
 
 (defvar ert-enabled t)
+(when org-history-debug-buffer
+  (setq ert-enabled nil))
 
 (ert-deftest test-vc-git-commit-on-save--full-lifecycle1 ()
-  "Test the complete lifecycle of `org-history-commit-on-save-hook'.
+  "Test the complete lifecycle of `org-history-hook-for-after-save'.
 Verifies fresh repositories, same-day amending, date transitions,
 and no-op saves (when no files are actually edited)."
 
@@ -37,21 +39,19 @@ and no-op saves (when no files are actually edited)."
 
               (save-buffer))) ;  +!!!+ trigger org-history, create initial commit  +!!!+
 
-          (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD")))
-                (commit-msg (string-trim (shell-command-to-string "git log -1 --pretty=%B"))))
-            (should (string-equal commit-count "1"))
-            (should (string-equal commit-msg "")))
+
+          (should (string-equal "1"		(string-trim (vc-git--run-command-string nil "rev-list" "--count" "HEAD"))))
+          (should (string-equal "org-history"	(string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
+
 
           (print "Day 2: Initial lines of code.\n")
           (insert "Day 2: Initial lines of code.\n")
           (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-23"))) ; current-date
             (save-buffer)) ; +!!!+ trigger org-history, create 2 commit  +!!!+
-          ;; (my-vc-git-log-to-messages)
-          (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD")))
-                (commit-msg (string-trim (shell-command-to-string "git log -1 --pretty=%B"))))
-            ;; (org-history--debug "test-full-lifecycle1 %s" commit-count)
-            (should (string-equal commit-count "2"))
-            (should (string-equal commit-msg ""))) ;; Validates empty message requirement
+
+          (should (string-equal "2"		(string-trim (vc-git--run-command-string nil "rev-list" "--count" "HEAD"))))
+          (should (string-equal "org-history"	(string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
+
 
           ;; =========================================================
           ;; TEST CASE 2: Same-Day Modification (Amend)
@@ -106,7 +106,7 @@ and no-op saves (when no files are actually edited)."
 
 
 (ert-deftest test-vc-git-commit-on-save--full-lifecycle2 ()
-  "Test the complete lifecycle of `org-history-commit-on-save-hook'.
+  "Test the complete lifecycle of `org-history-hook-for-after-save'.
 Verifies fresh repositories, same-day amending, date transitions,
 and no-op saves (when no files are actually edited)."
 
@@ -151,7 +151,7 @@ and no-op saves (when no files are actually edited)."
 
 
 (ert-deftest test-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
-  "Test the complete lifecycle of `org-history-commit-on-save-hook'.
+  "Test the complete lifecycle of `org-history-hook-for-after-save'.
 Verifies fresh repositories, same-day amending, date transitions,
 and no-op saves (when no files are actually edited)."
 
@@ -188,7 +188,7 @@ and no-op saves (when no files are actually edited)."
                 (commit-msg (string-trim (shell-command-to-string "git log -1 --pretty=%B"))))
             ;; (org-history--debug "test-full-lifecycle1 %s" commit-count)
             (should (string-equal commit-count "1"))
-            (should (string-equal commit-msg "")))
+            (should (string-equal commit-msg "org-history")))
 
           ;; =========================================================
           ;; TEST CASE 2: second file
@@ -206,7 +206,7 @@ and no-op saves (when no files are actually edited)."
                 (commit-msg (string-trim (shell-command-to-string "git log -1 --pretty=%B"))))
             ;; (org-history--debug "test-full-lifecycle1 %s" commit-count)
             (should (string-equal commit-count "1"))
-            (should (string-equal commit-msg "")))
+            (should (string-equal commit-msg "org-history")))
 
           ))
     (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD"))))
@@ -246,38 +246,29 @@ If the file isn't registered in VC yet, it should skip auto-commit."
           (insert "This file is not tracked by Git yet.\n")
 
           ;; Activate hook
-          (add-hook 'after-save-hook #'org-history-commit-on-save-hook nil t)
+          (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
 
-          ;; Save the untracked file
-          (save-buffer)
+          ;; Save the untracked file - trigger ask
+          (let* ((has-run-y-or-n nil))
+            (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) (setq has-run-y-or-n t) t))
+                      ((symbol-function 'y-or-n-p) (lambda (&rest _) (setq has-run-y-or-n t) t)))
+
+              (save-buffer)
+              (should has-run-y-or-n)))
+
 
           ;; Verify that the repository commit count remains exactly 1
           ;; (The hook should safely ignore this file because (vc-backend) won't return 'Git yet)
-          (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD"))))
-            (should (string-equal commit-count "2"))))
+          (should (string-equal "2"		(string-trim (vc-git--run-command-string nil "rev-list" "--count" "HEAD"))))
+          (should (string-equal "org-history"	(string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
+          )
 
       (when (get-file-buffer untracked-file)
         (kill-buffer (get-file-buffer untracked-file)))
       (delete-directory temp-dir t))))
 
-(defun my-vc-git-log-to-messages ()
-  "Fetch a beautifully formatted Git graph log string and print it to *Messages*."
-  (interactive)
-  (unless buffer-file-name
-    (user-error "Current buffer is not visiting a file"))
 
-  (if (not (eq (vc-backend buffer-file-name) 'Git))
-      (message "This file is not tracked by Git.")
-    (let ((default-directory (file-name-directory buffer-file-name)))
-      (with-temp-buffer
-        ;; Arguments: buffer, okstatus, file(s), git-commands...
-        (vc-git-command (current-buffer) 0 nil
-                        "log" "-n" "5" "--oneline" "--graph" "--decorate")
-
-        (message "Recent Git Commits:\n%s" (string-trim (buffer-string)))))))
-
-
-(ert-deftest test-vc-git-commit-on-save--ignored-file ()
+(ert-deftest test-org-history--vc-git-commit-on-save--ignored-file ()
   "Verify that saving a file matching .gitignore does not cause a crash.
 Git will reject standard 'git add' on ignored files; ensure the hook stays quiet."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-ignored-" t)))
@@ -296,7 +287,7 @@ Git will reject standard 'git add' on ignored files; ensure the hook stays quiet
 
           ;; Even if VC attempts to manage it, Git's architecture will block standard addition
           ;; (vc-register (list 'Git (list ignored-file)))
-          (add-hook 'after-save-hook #'org-history-commit-on-save-hook nil t)
+          (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
 
           ;; Modify and save
           (insert "Temporary logs that should be ignored.\n")
@@ -305,15 +296,19 @@ Git will reject standard 'git add' on ignored files; ensure the hook stays quiet
           ;; Using cl-letf but still calling the original code.
 
           (let* ((has-run nil)
+                 (has-run-y-or-n nil)
                  (orig-fun (symbol-function #'org-history-git-init)))
-            (cl-letf (((symbol-function #'org-history-git-init)
-                       (lambda (&rest args)
-                         (setq has-run t)
-                         ;; Manually forward the arguments to the original function
-                         (apply orig-fun args))))
+            (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) (setq has-run-y-or-n t) t))
+                      ((symbol-function 'y-or-n-p) (lambda (&rest _) (setq has-run-y-or-n t) t)))
+              (cl-letf (((symbol-function #'org-history-git-init)
+                         (lambda (&rest args)
+                           (setq has-run t)
+                           ;; Manually forward the arguments to the original function
+                           (apply orig-fun args))))
 
-              (should (progn (save-buffer) t))
-              (should (not has-run))))
+                (should (progn (save-buffer) t))
+                (should (not has-run))
+                (should has-run-y-or-n))))
 
 
           ;; (my-vc-git-log-to-messages))))
@@ -329,7 +324,7 @@ Git will reject standard 'git add' on ignored files; ensure the hook stays quiet
       (delete-directory temp-dir t))))
 
 
-(ert-deftest test-my-append-existing-dir-locals ()
+(ert-deftest test-org-history--my-append-existing-dir-locals ()
   "Test that the function safely merges into an existing .dir-locals.el file."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "ert-test-" t)))
          (target-file (expand-file-name ".dir-locals.el" temp-dir))
@@ -355,7 +350,7 @@ Git will reject standard 'git add' on ignored files; ensure the hook stays quiet
               (should (member '(org-todo-keywords . ("TODO" "DONE"))
                               (cdr (assoc 'org-mode result))))
               ;; 3. Check new eval block was safely appended to the section
-              ;; (should (member '(eval . (add-hook 'after-save-hook #'org-history-commit-on-save-hook nil t))
+              ;; (should (member '(eval . (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t))
               ;;                 (cdr (assoc 'org-mode result))))
               )))
       (delete-directory temp-dir t))))
@@ -397,9 +392,10 @@ Git will reject standard 'git add' on ignored files; ensure the hook stays quiet
         (delete-file expected-file))
       (delete-directory temp-dir))))
 
+
 ;; --- The Integration Test Wrapper ---
 
-(ert-deftest test-vc-git-integration-comprehensive ()
+(ert-deftest test-org-history--vc-git-integration-comprehensive ()
   "Test `org-history--vc-git-get-range-last-mod-date` across multiple edge cases."
   (let* ((temp-dir (make-temp-file "git-test-" t))
          (default-directory (file-name-as-directory temp-dir))
@@ -448,7 +444,7 @@ Git will reject standard 'git add' on ignored files; ensure the hook stays quiet
       ;; Cleanup
       (delete-directory temp-dir t))))
 
-(ert-deftest test-vc-git-integration-no-repo ()
+(ert-deftest test-org-history--vc-git-integration-no-repo ()
   "Verify the function returns nil gracefully when completely outside a Git repo."
   (let* ((temp-dir (make-temp-file "git-test-norepo-" t))
          (default-directory (file-name-as-directory temp-dir))

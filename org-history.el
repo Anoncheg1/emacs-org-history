@@ -1,6 +1,39 @@
-;;; org-history.el --- Dates for org-mode headers from git, minor mode or global hook -*- lexical-binding: t; -*-
+;;; org-history.el --- org-mode headers dates with git -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
+;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
+;; Keywords: org, outline, hideshow
+;; URL: https://codeberg.org/Anoncheg/emacs-org-history
+;; Version: 0.1
+;; Created: 30 may 2026
+;; Package-Requires: ((emacs "27.1"))
+;; SPDX-License-Identifier: AGPL-3.0-or-later
+
+;;; License
+
+;; This file is NOT part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+
+;; You should have received a copy of the GNU Affero General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;; Licensed under the GNU Affero General Public License, version 3 (AGPLv3)
+;; <https://www.gnu.org/licenses/agpl-3.0.en.html>
 
 ;;; Commentary:
+
+;; TODO:
+
+;; Useful code:
 
 ;; Check if file is tracked:
 ;; (vc-backend buffer-file-name)
@@ -8,19 +41,22 @@
 ;; Check if there is .git
 ;; (vc-git-root buffer-file-name)
 
-;; TODO:
-;; - check if last commit have "org-history at begining" and if not ask whether to commit and remember answer. clear steate at switching off and on mode.
-;; - check if .git already exist
-;; - mouseover notification for Org header
-;; - list of folders
+;; How this works:
+
+;; We accuratelly do "git commit --amend" for same date or create new
+;;  commit if date changed
+
+;;; TODO:
+;; - check org-history-directories
+;; - make it work with outline mode.
 ;; - command to add current folder to list
-;; - check if .gitignore is not exist already
-;; - test with modifying of two files
+;; - tests for -outlines  functions and itegral tests for minor mode
 
 ;;; Code:
 
 (require 'vc)
 (require 'vc-git)
+(require 'org-history-outline)
 (require 'org-history-debug)
 
 (defgroup org-history nil
@@ -49,10 +85,18 @@ Ignores: compiled files, backups, and lock files."
   :group 'org-history)
 
 (defcustom org-history-directories nil
-  "List of directories used with org-history."
+  "List of directories that processed without questions.
+If `org-history-hook-for-after-save' set as global hook.
+TODO: testing and refining required."
   :type 'string
   :group 'org-history)
 
+
+(defcustom org-history-track-file nil
+  "When non-nil, auto-commit at saving for this file is active."
+  :type 'boolean
+  :group 'org-history
+  :local t)
 
 (defun org-history--vc-reset-cache (&optional file)
   "Flush all common VC cache properties for current directory or FILE.
@@ -68,17 +112,24 @@ Uses `default-derectory'."
   "Return string with the last commit or nil.
 Uses `default-derectory'."
   (when-let ((root (vc-root-dir))) ; not nil even without commits
-    (vc-working-revision (vc-root-dir) (or backend 'Git))))
+    (vc-working-revision root (or backend 'Git))))
+
+;; (defun org-history--vc-git-get-last-commit-date ()
+;;   "Return string with the last commit date or nil.
+;; Uses `default-derectory'."
+;;   (when-let ((rev (org-history--vc-get-last-commit 'Git)))
+;;     (with-temp-buffer
+;;       ;; 't' makes this synchronous so the buffer fills before we read it
+;;       (vc-git-command (current-buffer) 0 nil
+;;                       "show" "-s" "--format=%as" rev)
+;;       (string-trim (buffer-string)))))
 
 (defun org-history--vc-git-get-last-commit-date ()
   "Return string with the last commit date or nil.
 Uses `default-derectory'."
-  (when-let ((rev (org-history--vc-get-last-commit 'Git)))
-    (with-temp-buffer
-      ;; 't' makes this synchronous so the buffer fills before we read it
-      (vc-git-command (current-buffer) 0 nil
-                      "show" "-s" "--format=%as" rev)
-      (string-trim (buffer-string)))))
+  (when-let ((d (vc-git--run-command-string nil "show" "-s" "--format=%as")))
+    (string-trim d)))
+
 
 (defun org-history--vc-add-file (file &optional backend)
   "Track file.
@@ -121,6 +172,7 @@ Uses `default-directory'."
   (when (and (file-exists-p file)
              (> start 0)
              (>= end start)
+             default-directory
              (vc-git-responsible-p default-directory))
     (with-temp-buffer
       (condition-case nil
@@ -132,6 +184,48 @@ Uses `default-directory'."
               (unless (string-empty-p output)
                 (string-trim output))))
         (error nil)))))
+
+(defun org-history--vc-git-blame-file (file)
+  "Return a hash table mapping line numbers to modification dates for FILE.
+
+An optimized version of `org-history--vc-git-get-range-last-mod-date'.
+Uses `default-directory'.
+
+The returned hash table uses `eql' as its test, where keys are line
+numbers (integers starting from 1) and values are plain strings representing
+the last modification date formatted as \"YYYY-MM-DD\".
+
+If FILE does not exist, is not registered under Git, or the underlying
+`git blame' command fails, an empty hash table is returned.
+
+To minimize memory allocation and prevent Garbage Collection (GC) pressure,
+consecutive lines that share identical modification dates point to the exact
+same string object in memory.  The search is strictly bounded line-by-line
+to prevent layout syntax errors from desynchronizing the line counter."
+  (when (and (file-exists-p file)
+             default-directory
+             (org-history--vc-git-get-last-commit-date)
+             (vc-git-responsible-p default-directory))
+    (let ((line-dates (make-hash-table :test 'eql))
+          (line-num 1)
+          last-date-str)
+      (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
+        (with-temp-buffer
+          (when (zerop (vc-git-command t 0 nil "blame" "--date=short" "-c" file))
+            (goto-char (point-min))
+            ;; Optimization 1: Anchor search to the current line to limit regex engine workload
+            (while (re-search-forward "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (line-end-position) t)
+              (let ((date-str (match-string-no-properties 1)))
+                ;; Optimization 2: String Deduplication to drastically cut GC pressure
+                (if (and last-date-str (string= date-str last-date-str))
+                    (puthash line-num last-date-str line-dates)
+                  (setq last-date-str date-str)
+                  (puthash line-num date-str line-dates)))
+              (setq line-num (1+ line-num))
+              ;; Optimization 3: Move explicitly to the next line to avoid double-matching
+              ;; if a code comment accidentally contains a date string.
+              (forward-line 1)))))
+      line-dates)))
 
 
 (defun org-history-git-init (&optional first-file)
@@ -186,6 +280,7 @@ Use `default-directory'."
     ;; (org-history--debug "org-history-git-init" (org-history--vc-git-status))
     ;; (vc-responsible-backend default-directory) ; fix vc-root-dir to return without first commit
     ;; (print (vc-root-dir))
+    (setq org-history-track-file t)
 
     ;; Commit is not required, add is enough
     (message "Registered .gitignore and %s with Git!" default-directory)))
@@ -206,13 +301,16 @@ Use `default-directory'."
 
 (defun org-history--append-after-save-to-dir-locals (target-dir)
   "Safely add or merge the local after-save-hook into TARGET-DIR/.dir-locals.el.
+Add: function to `after-save-hook' and enable `org-history-track-file'.
 Return .dir-locals.el path."
   (interactive "DSelect directory for .dir-locals.el: ")
   (let* ((file-path (expand-file-name ".dir-locals.el" (or target-dir default-directory)))
-         ;; FIX: Updated to inject the safe check and warning message
-         (new-rule '(eval . (if (fboundp 'org-history-commit-on-save-hook)
-                                (add-hook 'after-save-hook #'org-history-commit-on-save-hook nil t)
+         ;; Your existing hook injection rule
+         (new-rule '(eval . (if (fboundp 'org-history-hook-for-after-save)
+                                (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
                               (lwarn 'org-history :warning "`org-history` is not available; auto-commit on save disabled."))))
+         ;; NEW: The variable tracking rule
+         (track-rule '(org-history-track-file . t))
          ;; 1. Read file if it exists, otherwise start with a clean nil list
          (config (and (file-exists-p file-path)
                       (with-temp-buffer
@@ -220,8 +318,13 @@ Return .dir-locals.el path."
                         (ignore-errors (read (current-buffer)))))))
 
     ;; 2. Seamlessly update or create the 'org-mode section
+    ;; Inject the eval rule if missing
     (unless (member new-rule (cdr (assoc 'org-mode config)))
       (setf (alist-get 'org-mode config) (cons new-rule (cdr (assoc 'org-mode config)))))
+
+    ;; NEW: Inject the org-history-track-file rule if missing
+    (unless (member track-rule (cdr (assoc 'org-mode config)))
+      (setf (alist-get 'org-mode config) (cons track-rule (cdr (assoc 'org-mode config)))))
 
     ;; 3. Write it back out cleanly
     (with-temp-file file-path
@@ -231,15 +334,22 @@ Return .dir-locals.el path."
     file-path))
 
 
-(defun org-history-commit-on-save-hook ()
+
+(defun org-history-hook-for-after-save ()
   "Automatically commit or amend in Git after saving a buffer.
 Intended for `after-save-hook'.
-Utilizes the Emacs VC package for state tracking and handles empty repos smoothly."
-  (org-history--debug "org-history-commit-on-save-hook N1")
+
+If there is no .git or no commits or previous commit was not starting
+ with \"org-history\" string, we ask user to confirm to commit and
+ remember choice in current buffer in `org-history-track-file' variable.
+We ue `y-or-n-p' to ask user at init repo and at new commit it
+ `org-history-track-file' was not set.
+"
+  (org-history--debug "org-history-hook-for-after-save N1")
   (when-let ((dir (when buffer-file-name (file-name-directory buffer-file-name))) ; root of current file ; if buffer visiting a file
              ;; if hook-placed is local we
-             (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-commit-on-save-hook)))
-    (org-history--debug "org-history-commit-on-save-hook N2")
+             (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save)))
+    (org-history--debug "org-history-hook-for-after-save N2")
     ;; Check if we configured correctly for current directory or local buffer
     (when (or (eq hook-placed :local)
               (eq hook-placed :both)
@@ -249,7 +359,7 @@ Utilizes the Emacs VC package for state tracking and handles empty repos smoothl
                        (when (file-equal-p dir path)
                          (throw 'found t)))
                      nil)))
-      (org-history--debug "org-history-commit-on-save-hook N3" default-directory (vc-git-root buffer-file-name) buffer-file-name)
+      (org-history--debug "org-history-hook-for-after-save N3" default-directory (vc-git-root buffer-file-name) buffer-file-name)
       (org-history--vc-reset-cache)
       (org-history--vc-reset-cache buffer-file-name)
 
@@ -267,12 +377,12 @@ Utilizes the Emacs VC package for state tracking and handles empty repos smoothl
                    ;; 1. Check if the directory is NOT in Git, and ask the user to initialize it
                    ;; (print (list is-git backend  default-directory))
                    (not default-directory))
-          (if (y-or-n-p (format "Maybe init git in directory %s? " dir))
+          (if (y-or-n-p (format "org-history: Do git init in %s? " dir))
               (progn
                 (setq default-directory dir) ; restore
                 (vc-file-clearprops buffer-file-name)
                 ;; Initialize the repository synchronously
-                (org-history-git-init (file-relative-name buffer-file-name)) ; Uses default-directory)
+                (org-history-git-init (file-relative-name buffer-file-name)) ; Uses default-directory, set org-history-track-file to t
 
                 ;; Update our state flag since it's now a Git repo
                 (setq backend 'Git)
@@ -281,12 +391,14 @@ Utilizes the Emacs VC package for state tracking and handles empty repos smoothl
             ;; else If user says no, we display a silent message and do nothing
             (message "Skipped Git auto-commit (Directory is not a Git repository).")))
 
-        (org-history--debug "org-history-commit-on-save-hook N32" default-directory backend)
+        (org-history--debug "org-history-hook-for-after-save N32" default-directory backend)
         (when default-directory ; if default-directory is not nil, it is 'Git
-          (org-history--debug "org-history-commit-on-save-hook N4 %s" default-directory buffer-file-name (vc-backend buffer-file-name))
+          (org-history--debug "org-history-hook-for-after-save N4 %s" default-directory buffer-file-name (vc-backend buffer-file-name))
           ;; (rev (vc-working-revision nil backend)) ; working or last revision
           (let* (;; "Get the YYYY-MM-DD author date for a specific REV hash of FILE."
                  (last-commit-date (org-history--vc-git-get-last-commit-date))
+                 (last-commit-message (when last-commit-date
+                                        (string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
                  ;; (last-commit-date   (let ((default-directory dir)) ; required?
                  ;;                       (with-temp-buffer
                  ;;                         ;; 't' makes this synchronous so the buffer fills before we read it
@@ -299,34 +411,77 @@ Utilizes the Emacs VC package for state tracking and handles empty repos smoothl
 
             ;; Stage the saved file
             ;; (vc-git-command nil 0 file-relative "add")
-            (org-history--vc-add-file buffer-file-name 'Git)
 
-            ;; Decision Matrix: Amend or New Commit?
+
+            ;; "Commit": with --amend (same date) or without (new day, no previous)
             ;; (print (list rev last-commit-date current-date))
-            (if (and last-commit-date (string-equal last-commit-date current-date))
+            (if (and last-commit-date
+                     (string-equal last-commit-date current-date)
+                     (string-prefix-p "org-history" last-commit-message))
                 ;; Case 1: Same day -> Amend without altering the commit message
                 (progn
-                  (org-history--debug "org-history-commit-on-save-hook N5")
-                  (vc-git-command nil 0 nil "commit" "--amend" "--no-edit" "--allow-empty-message")
+                  (org-history--debug "org-history-hook-for-after-save N5")
+                  (org-history--vc-add-file buffer-file-name 'Git)
+                  (vc-git-command nil 0 nil "commit" "--amend" "--no-edit" "--date=now")
+                  (setq org-history-track-file t) ; dont ask next time if user made custom commit.
                   (message "VC-Git: Amended existing commit for today."))
 
               ;; else: Case 2: New day OR fresh repo -> Create a new commit with an empty message
-              (unless last-commit-date ; is nil, no commits at all, git probably is not initialized
-                (dolist (args org-history-git-init-commands)
-                  ;; 'apply' lets us unpack the 'args' list directly into the function call
-                  (apply #'vc-git-command nil 0 nil args)))
-              (org-history--debug "org-history-commit-on-save-hook N6")
-              (vc-git-command nil 0 nil "commit" "--allow-empty-message" "-m" "")
-              (org-history--debug "org-history-commit-on-save-hook N7" (shell-command-to-string "git rev-list --count HEAD") last-commit-date current-date)
-              ;; (vc-checkin (list file) backend comment)
-              (message "VC-Git: Created new empty-message commit."))
+              ;; Initilize .git if it have no commits.
+              (unless org-history-track-file
+                (when (if last-commit-date
+                          (y-or-n-p (format "org-history: enable auto-commit on save this? " (file-relative-name buffer-file-name)))
+                        ;; else
+                        (y-or-n-p (format "org-history: Do git init in %s? " dir)))
+                  (setq org-history-track-file t)))
+
+              (when org-history-track-file
+                ;; initialize .git if it have no commits
+                (unless last-commit-date ; is nil, no commits at all, git probably is not initialized
+                  (dolist (args org-history-git-init-commands)
+                    (apply #'vc-git-command nil 0 nil args))) ; 'apply' lets us unpack the 'args' list directly into the function call
+
+                (org-history--debug "org-history-hook-for-after-save N6")
+                (org-history--vc-add-file buffer-file-name 'Git)
+                (vc-git-command nil 0 nil "commit" "--allow-empty-message" "-m" "org-history")
+                (org-history--debug "org-history-hook-for-after-save N7" (shell-command-to-string "git rev-list --count HEAD") last-commit-date current-date)
+
+                ;; (vc-checkin (list file) backend comment)
+                (message "VC-Git: Created new empty-message commit.")
+                ;; end of "Commit"
+                ))
 
             ;; Performance Sync: Clear VC internal properties so the UI/modeline updates immediately
             (vc-file-clearprops buffer-file-name)))))))
 
 ;; Register the hook globally to trigger upon buffer saves
-;; (add-hook 'after-save-hook #'org-history-commit-on-save-hook)
-;; (remove-hook 'after-save-hook #'org-history-commit-on-save-hook)
+;; (add-hook 'after-save-hook #'org-history-hook-for-after-save)
+;; (remove-hook 'after-save-hook #'org-history-hook-for-after-save)
+
+
+(defun org-history--at-unfold-add-date (orig-fun &rest args)
+  "Triggered after org-cycle. Checks if user interactively unfolded a heading.
+Reliably check for interactive execution using :around advice."
+  ;; 1. Check interactivity FIRST while org-cycle is at the top of the stack
+  (let ((interactive-call (called-interactively-p 'any)))
+
+    ;; 2. Run the original org-cycle command so the heading actually changes state
+    (apply orig-fun args)
+
+    ;; 3. Now perform your post-execution visibility checks safely
+  (when (and interactive-call			; 1. Only run if called interactively
+             (org-at-heading-p)		; 2. Only run if cursor is on a heading
+             (not (save-excursion		; 3. Ensure heading is currently open
+                    (end-of-line)
+                    (org-fold-folded-p nil 'headline))))
+    (let ((start (save-excursion (forward-line 1) (point)))
+          (end (save-excursion (org-end-of-subtree t t) (point))))
+      (org-history-outline--add-dates start end))
+    ;; (message "Interactively unfolded heading!")
+    )))
+
+;; Attach as an ':after' advice to org-cycle
+
 
 (define-minor-mode org-history
   "Minor mode for `org-mode' to showing date of last modified per outlier."
@@ -336,15 +491,22 @@ Utilizes the Emacs VC package for state tracking and handles empty repos smoothl
   (unless (derived-mode-p 'org-mode)
     (user-error "org-history minor mode failed to activate in buffer %s, not Org mode" (buffer-name (current-buffer))))
   (if org-history
-      (add-hook 'after-save-hook #'org-history-commit-on-save-hook nil t)
+      (progn
+        (org-history-outline--add-dates)
+        (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
+        (advice-add 'org-cycle :around #'org-history--at-unfold-add-date '((local . t))))
     ;; else - off
-    (remove-hook 'after-save-hook #'org-history-commit-on-save-hook t)))
+    (advice-remove 'org-cycle #'org-history--at-unfold-add-date)
+    (remove-hook 'after-save-hook #'org-history-hook-for-after-save t)
+    (org-history-outline-clear-all-org-date-overlays)
+
+    (kill-local-variable 'org-history-track-file)))
 
 ;; Optimization: Only trigger if Emacs VC explicitly sees the file as 'edited
       ;; (when (eq (vc-state buffer-file-name) 'edited)
 
 
-;; (defun org-history-commit-on-save-hook ()
+;; (defun org-history-hook-for-after-save ()
 ;;   "Automatically commit or amend in Git after saving a buffer.
 ;; Utilizes the Emacs VC package for state tracking and handles empty repos smoothly."
 ;;   (when (and buffer-file-name
@@ -390,8 +552,8 @@ Utilizes the Emacs VC package for state tracking and handles empty repos smoothl
 
 ;; ;; Switch to 'before-save-hook' so we capture state BEFORE Emacs flushes
 ;; ;; the buffer and resets file status indicators.
-;; (add-hook 'before-save-hook #'org-history-commit-on-save-hook)
-;; (remove-hook 'before-save-hook #'org-history-commit-on-save-hook)
+;; (add-hook 'before-save-hook #'org-history-hook-for-after-save)
+;; (remove-hook 'before-save-hook #'org-history-hook-for-after-save)
 
 (provide 'org-history)
 
