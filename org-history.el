@@ -31,7 +31,13 @@
 
 ;;; Commentary:
 
-;; TODO:
+;; Configuration:
+;; (add-to-list 'load-path "/path-to/emacs-org-history")
+;; (require 'org-history)
+
+;; Activation: M-x org-history
+
+;; Customization: M-x customize-group RET org-history
 
 ;; Useful code:
 
@@ -92,11 +98,8 @@ TODO: testing and refining required."
   :group 'org-history)
 
 
-(defcustom org-history-track-file nil
-  "When non-nil, auto-commit at saving for this file is active."
-  :type 'boolean
-  :group 'org-history
-  :local t)
+(defvar-local org-history-track-file nil
+  "When non-nil, auto-commit at saving for this file is active.")
 
 (defun org-history--vc-reset-cache (&optional file)
   "Flush all common VC cache properties for current directory or FILE.

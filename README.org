@@ -1,5 +1,20 @@
 * org-history
 Show last modification date for headers in Org-mode of GNU Emacs
+
+* Configuration
+
+#+begin_src elisp :lexical t :results none :exports code :eval no
+(add-to-list 'load-path "/path-to/emacs-org-history")
+(require 'org-history)
+#+end_src
+
+Activation: ~M-x org-history~
+
+* Customization
+
+: M-x customize-group RET org-history
+
 * Screenshot
 
+[[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png]]
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
