@@ -196,6 +196,20 @@ This value must be an integer representing the day retention threshold."
   :local t
   :safe #'integerp)
 
+(defcustom org-history-outline-min-days 90
+  "Minimum number of days to keep in the outline history.
+This value must be an integer representing the day retention threshold."
+  :group 'org-history
+  :type 'integer
+  :local t
+  :safe #'integerp)
+
+(defcustom org-history-outline-date-column 60
+  "Column to put date at."
+  :group 'org-history
+  :type 'integer
+  :safe #'integerp)
+
 (defun org-history-outline--outline-attach-date (date-str)
   "Attach overlay with date at the end header with color gradient.
 Cursors should be at header position.
@@ -218,12 +232,12 @@ Automatically deletes older date overlays on the same headline when updated."
          ;; --- THE CHARACTER CALCULATION SETUP ---
          (lend (line-end-position))
          (lstart (1- lend))
-         (target-column 60)
+         ;; (target-column 60)
 
          ;; Calculate the current text column width manually
          (current-line-length (- lend (line-beginning-position)))
          ;; Determine needed padding (fallback to at least 2 spaces if line is longer than target)
-         (padding-needed (max 2 (- target-column current-line-length)))
+         (padding-needed (max 2 (- org-history-outline-date-column current-line-length)))
          ;; Generate a real string containing exactly that many spaces
          (calculated-spaces (make-string padding-needed ?\s)))
 
@@ -246,8 +260,6 @@ Automatically deletes older date overlays on the same headline when updated."
       ;; Concatenate the last character, the exact computed spaces, and the date.
       ;; No complex `:align-to` layout engines involved—just pure text math.
       (overlay-put ov 'display (concat last-char calculated-spaces date-text)))))
-
-
 
 
 (defun org-history-outline-clear-all-org-date-overlays ()
@@ -286,32 +298,33 @@ Automatically deletes older date overlays on the same headline when updated."
   "Collect line ranges for visible Org headings and apply dates separately.
 Optional arguments PAGE-BEG PAGE-END are position in current buffer."
   (interactive)
-  (let (tasks)
-    (save-excursion
-      (goto-char (or page-beg (point-min)))
-      ;; Ensure we start at the first heading
-      (unless (org-at-heading-p)
-        (outline-next-heading))
+  (when (org-history--vc-git-get-last-commit-date) ; or gethash(4 nil) error in `org-history-outline--process-tasks'
+    (let (tasks)
+      (save-excursion
+        (goto-char (or page-beg (point-min)))
+        ;; Ensure we start at the first heading
+        (unless (org-at-heading-p)
+          (outline-next-heading))
 
-      ;; PHASE 1: Collect coordinates without touching Git or overlays
-      (while (and (not (eobp))
-                  (if page-end (< (point) page-end) t))
-        (unless (org-fold-core-get-folding-spec 'headline (point))
-          (let* ((heading-pos (point))
-                 (start (save-excursion (forward-line 1) (line-number-at-pos)))
-                 (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
-                 (real-start (min start end))
-                 (real-end (max start end)))
-            ;; Push a task tuple: (heading-marker start-line end-line)
-            ;; Using a marker ensures the position stays accurate even if the buffer shifts
-            (push (list (copy-marker heading-pos) real-start real-end) tasks)))
-        (outline-next-heading)))
-    ;; (message "Heading markers collected.")
+        ;; PHASE 1: Collect coordinates without touching Git or overlays
+        (while (and (not (eobp))
+                    (if page-end (< (point) page-end) t))
+          (unless (org-fold-core-get-folding-spec 'headline (point))
+            (let* ((heading-pos (point))
+                   (start (save-excursion (forward-line 1) (line-number-at-pos)))
+                   (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
+                   (real-start (min start end))
+                   (real-end (max start end)))
+              ;; Push a task tuple: (heading-marker start-line end-line)
+              ;; Using a marker ensures the position stays accurate even if the buffer shifts
+              (push (list (copy-marker heading-pos) real-start real-end) tasks)))
+          (outline-next-heading)))
+      ;; (message "Heading markers collected.")
 
-    ;; PHASE 2: Process the collected list
-    (if tasks
-        (org-history-outline--process-tasks (nreverse tasks) (unless (or page-beg page-end) t))
-      (message "No visible headings found."))))
+      ;; PHASE 2: Process the collected list
+      (if tasks
+          (org-history-outline--process-tasks (nreverse tasks) (unless (or page-beg page-end) t))
+        (message "No visible headings found.")))))
 
 ;; (defun org-history-outline--process-tasks (tasks)
 ;;   "Loop through TASKS to fetch Git dates and apply overlays."
@@ -408,7 +421,8 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
 
     (when (and set-oldest file-oldest)
       (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest)))
-      (if (< max-days org-history-outline-max-days) ; we dont exce
+      (if (and (< max-days org-history-outline-max-days) ; we dont exce
+               (>= max-days org-history-outline-min-days))
           (setq org-history-outline-max-days (- (org-today) (org-time-string-to-absolute file-oldest))))
       (message "org-history: max-days set to %s days." org-history-outline-max-days))
 
