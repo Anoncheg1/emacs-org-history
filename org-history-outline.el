@@ -190,7 +190,8 @@
 
 (defcustom org-history-outline-max-days (* 360 2)
   "Maximum number of days to keep in the outline history.
-This value must be an integer representing the day retention threshold."
+This value must be an integer representing the day retention threshold.
+Used to color range for dates, adjusted to oldest commit date in repo."
   :group 'org-history
   :type 'integer
   :local t
@@ -198,10 +199,10 @@ This value must be an integer representing the day retention threshold."
 
 (defcustom org-history-outline-min-days 90
   "Minimum number of days to keep in the outline history.
-This value must be an integer representing the day retention threshold."
+This value must be an integer representing the day retention threshold.
+Used to calculate max-days range for colors of dates."
   :group 'org-history
   :type 'integer
-  :local t
   :safe #'integerp)
 
 (defcustom org-history-outline-date-column 60
@@ -396,6 +397,7 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
   (unless (eq org-history-outline--git-blame-tick (buffer-modified-tick))
     (setq org-history-outline--git-blame-cache (org-history--vc-git-blame-file buffer-file-name))
     (setq org-history-outline--git-blame-tick (buffer-modified-tick)))
+  (org-history--debug "org-history-outline--process-tasks N1")
   ;; PHASE 1: Process ranges instantly using native loops
   (let* (file-oldest
          max-days
@@ -412,18 +414,26 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
                             (when (and l-date (string> l-date latest))
                               (setq latest l-date)))
                           (setq l (1+ l))))
+                      ;; Now update file-oldest with the oldest date found
                       (when (and (not (string= latest "1970-01-01"))
-                                 (string< latest file-oldest))
+                                 (or (not file-oldest)
+                                     (string< latest file-oldest)))
                         (setq file-oldest latest))
                       ;; Return pair: (marker . date-str) or nil if unchanged from epoch
                       (cons marker (unless (string= latest "1970-01-01") latest))))
                   tasks)))
+    (org-history--debug "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
 
     (when (and set-oldest file-oldest)
-      (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest)))
-      (if (and (< max-days org-history-outline-max-days) ; we dont exce
-               (>= max-days org-history-outline-min-days))
-          (setq org-history-outline-max-days (- (org-today) (org-time-string-to-absolute file-oldest))))
+      (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest))) ; in repo
+      (setq org-history-outline-max-days max-days)
+      (org-history--debug "org-history-outline--process-tasks N3 %s" max-days (org-today) (org-time-string-to-absolute file-oldest))
+      ;; check boundaries
+      (if (> max-days org-history-outline-max-days)
+          (setq org-history-outline-max-days org-history-outline-max-days)
+        ;; else
+        (when (< max-days org-history-outline-min-days)
+          (setq org-history-outline-max-days org-history-outline-min-days)))
       (message "org-history: max-days set to %s days." org-history-outline-max-days))
 
     ;; PHASE 2: Apply Overlays using native dolist

@@ -435,89 +435,158 @@ Use `default-directory'."
 ;;     (message "Successfully configured .dir-locals.el to activate org-history for %s" rel-file-name)
 ;;     file-path))
 
+;; (defun org-history--append-after-save-to-dir-locals (target-dir)
+;;   "Safely add or merge a file-specific activation rule into TARGET-DIR/.dir-locals.el.
+;; This activates `org-history-mode' (or your specific minor mode) ONLY when
+;; the current file is opened.
+;; Return .dir-locals.el path."
+;;   (interactive "DSelect directory for .dir-locals.el: ")
+;;   (unless buffer-file-name
+;;     (user-error "Current buffer is not visiting a file"))
+
+;;   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
+;;          (file-path (expand-file-name ".dir-locals.el" target-dir))
+;;          ;; Calculate the relative file name for the current buffer
+;;          (rel-file-name (file-relative-name buffer-file-name target-dir))
+
+;;          ;; THE SINGLE RULE: If the minor mode function exists, turn it on
+;;          (mode-activation-rule '(eval . (if (fboundp 'org-history-mode)
+;;                                           (org-history-mode 1))))
+
+;;          ;; Read file if it exists, otherwise start with a clean nil list
+;;          (config (and (file-exists-p file-path)
+;;                       (with-temp-buffer
+;;                         (insert-file-contents file-path)
+;;                         (ignore-errors (read (current-buffer)))))))
+
+;;     ;; Update the file-specific section with our single evaluation rule
+;;     (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
+;;       (setf (alist-get rel-file-name config nil nil #'equal)
+;;             (cons mode-activation-rule (cdr (assoc rel-file-name config #'equal)))))
+
+;;     ;; (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
+;;     ;;   (setf (alist-get rel-file-name config)
+;;     ;;         (cons mode-activation-rule (cdr (assoc rel-file-name config)))))
+
+;;     ;; Write it back out cleanly
+;;     (with-temp-file file-path
+;;       (let (print-level print-length)
+;;         (pp config (current-buffer))))
+;;     (message "Successfully configured .dir-locals.el to activate org-history for %s" rel-file-name)
+;;     file-path))
+
+;; (defun org-history--append-after-save-to-dir-locals (target-dir)
+;;   "Safely add or merge the local after-save-hook into TARGET-DIR/.dir-locals.el.
+;; Add: function to `after-save-hook' globally for org-mode, but enable
+;; `org-history-track-file' only for the current `buffer-file-name' relative
+;; to the project directory.
+;; Return .dir-locals.el path."
+;;   (interactive "DSelect directory for .dir-locals.el: ")
+;;   (unless buffer-file-name
+;;     (user-error "Current buffer is not visiting a file"))
+;;   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
+;;          (file-path (expand-file-name ".dir-locals.el" target-dir))
+;;          ;; 1. Calculate the relative file name at configuration time
+;;          (rel-file-name (file-relative-name buffer-file-name target-dir))
+
+;;          ;; FIXED: Calculate the relative name of the buffer dynamically at runtime
+;;          ;; against `default-directory` (which points to the .dir-locals.el location)
+;;          (new-rule `(eval . (when (and (fboundp 'org-history-mode)
+;;                                        buffer-file-name
+;;                                        (string-equal (file-relative-name buffer-file-name default-directory)
+;;                                                      ,rel-file-name))
+;;                               (org-history-mode 1))))
+
+;;          ;; Read file if it exists, otherwise start with a clean nil list
+;;          (config (and (file-exists-p file-path)
+;;                       (with-temp-buffer
+;;                         (insert-file-contents file-path)
+;;                         (ignore-errors (read (current-buffer)))))))
+
+;;     ;; 2. Update the general 'org-mode section for the hook
+;;     (unless (member new-rule (cdr (assoc 'org-mode config)))
+;;       (setf (alist-get 'org-mode config) (cons new-rule (cdr (assoc 'org-mode config)))))
+
+;;     ;; 4. Write it back out cleanly
+;;     (with-temp-file file-path
+;;       (let (print-level print-length)
+;;         (pp config (current-buffer))))
+;;     (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
+;;     file-path))
+
+;; ----------------------- append-after-save ---------------
+;; [Original Config] ---> Extract 'org-mode entries (File A's rules)
+;;                              |
+;;                              v
+;;                      Add File B's new rule to the list
+;;                              |
+;;                              v
+;; [Strip old org-mode] -> [Insert combined rules] -> [Save file]
+;;
+;; Accuratelly add current file:
+;; ((org-mode
+;;   (eval . (when (and (fboundp 'org-history-mode) buffer-file-name (file-equal-p buffer-file-name (expand-file-name "todo.org" default-directory))) (org-history-mode 1)))
+;;   (eval . (when (and (fboundp 'org-history-mode) buffer-file-name (file-equal-p buffer-file-name (expand-file-name "notes.org" default-directory))) (org-history-mode 1)))))
+
 (defun org-history--append-after-save-to-dir-locals (target-dir)
-  "Safely add or merge a file-specific activation rule into TARGET-DIR/.dir-locals.el.
-This activates `org-history-mode' (or your specific minor mode) ONLY when
-the current file is opened.
-Return .dir-locals.el path."
+  "Add an `org-history-mode` rule to TARGET-DIR/.dir-locals.el for the current file.
+Safely merges with existing mode settings without overwriting rules for other files."
   (interactive "DSelect directory for .dir-locals.el: ")
   (unless buffer-file-name
     (user-error "Current buffer is not visiting a file"))
 
   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
          (file-path (expand-file-name ".dir-locals.el" target-dir))
-         ;; Calculate the relative file name for the current buffer
          (rel-file-name (file-relative-name buffer-file-name target-dir))
 
-         ;; THE SINGLE RULE: If the minor mode function exists, turn it on
-         (mode-activation-rule '(eval . (if (fboundp 'org-history-mode)
-                                          (org-history-mode 1))))
-
-         ;; Read file if it exists, otherwise start with a clean nil list
-         (config (and (file-exists-p file-path)
-                      (with-temp-buffer
-                        (insert-file-contents file-path)
-                        (ignore-errors (read (current-buffer)))))))
-
-    ;; Update the file-specific section with our single evaluation rule
-    (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
-      (setf (alist-get rel-file-name config nil nil #'equal)
-            (cons mode-activation-rule (cdr (assoc rel-file-name config #'equal)))))
-
-    ;; (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
-    ;;   (setf (alist-get rel-file-name config)
-    ;;         (cons mode-activation-rule (cdr (assoc rel-file-name config)))))
-
-    ;; Write it back out cleanly
-    (with-temp-file file-path
-      (let (print-level print-length)
-        (pp config (current-buffer))))
-    (message "Successfully configured .dir-locals.el to activate org-history for %s" rel-file-name)
-    file-path))
-
-(defun org-history--append-after-save-to-dir-locals (target-dir)
-  "Safely add or merge the local after-save-hook into TARGET-DIR/.dir-locals.el.
-Add: function to `after-save-hook' globally for org-mode, but enable
-`org-history-track-file' only for the current `buffer-file-name' relative
-to the project directory.
-Return .dir-locals.el path."
-  (interactive "DSelect directory for .dir-locals.el: ")
-  (unless buffer-file-name
-    (user-error "Current buffer is not visiting a file"))
-  (let* ((target-dir (expand-file-name (or target-dir default-directory)))
-         (file-path (expand-file-name ".dir-locals.el" target-dir))
-         ;; 1. Calculate the relative file name at configuration time
-         (rel-file-name (file-relative-name buffer-file-name target-dir))
-
-         ;; FIXED: Calculate the relative name of the buffer dynamically at runtime
-         ;; against `default-directory` (which points to the .dir-locals.el location)
+         ;; The eval rule sequence to enforce
          (new-rule `(eval . (when (and (fboundp 'org-history-mode)
                                        buffer-file-name
-                                       (string-equal (file-relative-name buffer-file-name default-directory)
-                                                     ,rel-file-name))
+                                       (file-equal-p buffer-file-name
+                                                     (expand-file-name ,rel-file-name default-directory)))
                               (org-history-mode 1))))
 
-         ;; Read file if it exists, otherwise start with a clean nil list
-         (config (and (file-exists-p file-path)
-                      (with-temp-buffer
-                        (insert-file-contents file-path)
-                        (ignore-errors (read (current-buffer)))))))
+         ;; Read existing config safely
+         (config (when (file-exists-p file-path)
+                   (with-temp-buffer
+                     (insert-file-contents file-path)
+                     (condition-case nil
+                         (let ((data (read (current-buffer))))
+                           (when (listp data) data))
+                       (error nil)))))
 
-    ;; 2. Update the general 'org-mode section for the hook
-    (unless (member new-rule (cdr (assoc 'org-mode config)))
-      (setf (alist-get 'org-mode config) (cons new-rule (cdr (assoc 'org-mode config)))))
+         ;; Extract existing org-mode rules
+         (org-entries (cdr (assoc 'org-mode config)))
+         (already-exists nil))
 
-    ;; 4. Write it back out cleanly
-    (with-temp-file file-path
-      (let (print-level print-length)
-        (pp config (current-buffer))))
-    (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
+    ;; PHASE 2: Semantic Check (Look for this specific file's rule)
+    (dolist (entry org-entries)
+      (when (and (eq (car-safe entry) 'eval)
+                 (string-match-p (regexp-quote (format "%S" rel-file-name))
+                                 (format "%S" entry)))
+        (setq already-exists t)))
+
+    ;; PHASE 3: Non-destructive Merge & Write-back
+    (if already-exists
+        (message ".dir-locals.el is already configured for %s" rel-file-name)
+
+      (progn
+        ;; 1. Add our new rule to the front of the existing org-mode rules
+        (setq org-entries (cons new-rule org-entries))
+
+        ;; 2. Strip the old 'org-mode block out of the global config entirely
+        (setq config (assq-delete-all 'org-mode config))
+
+        ;; 3. Re-insert the freshly updated 'org-mode block back into config
+        (push (cons 'org-mode org-entries) config)
+
+        ;; PHASE 4: Write back neatly formatted data
+        (with-temp-file file-path
+          (let (print-level print-length)
+            (pp config (current-buffer))))
+        (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)))
+
     file-path))
-
-
-
-
-
 
 ;; -=-= hook: after-save
 
@@ -663,7 +732,7 @@ Reliably check for interactive execution using :around advice."
              (org-at-heading-p)		; 2. Only run if cursor is on a heading
              (not (save-excursion		; 3. Ensure heading is currently open
                     (end-of-line)
-                    (org-fold-folded-p nil 'headline)))
+                    (org-fold-folded-p nil 'outline))) ; 'headline ?
              (or (eq hook-placed :local)
                  (eq hook-placed :both)
                  (and (eq hook-placed :global)
@@ -699,7 +768,8 @@ Reliably check for interactive execution using :around advice."
     (remove-hook 'after-save-hook #'org-history-hook-for-after-save t)
     (org-history-outline-clear-all-org-date-overlays)
 
-    (kill-local-variable 'org-history-track-file)))
+    (kill-local-variable 'org-history-track-file)
+    (message "org-history is disabled.")))
 
 ;; Optimization: Only trigger if Emacs VC explicitly sees the file as 'edited
       ;; (when (eq (vc-state buffer-file-name) 'edited)
