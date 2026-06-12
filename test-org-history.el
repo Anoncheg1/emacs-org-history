@@ -8,50 +8,6 @@
 (when org-history-debug-buffer
   (setq ert-enabled nil))
 
-;; (ert-deftest test-vc-git-commit-on-save--full-lifecycle1 ()
-;;   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
-;;          (test-file (expand-file-name "test-file.txt" temp-dir))
-;;          (default-directory temp-dir))
-;;     (unwind-protect
-;;         (progn
-;;           (find-file test-file)
-;;           (org-mode)
-;;           (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-;;           (insert "Day 1: Initial lines of code.\n")
-;;           (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-22")))
-;;             (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) t))
-;;                       ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
-;;               (save-buffer)))
-;;           (should (string-equal "1" (string-trim (vc-git--run-command-string nil "rev-list" "--count" "HEAD"))))
-;;           (should (string-equal "org-history" (string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
-;;           (insert "Day 2: Initial lines of code.\n")
-;;           (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-23")))
-;;             (save-buffer))
-;;           (should (string-equal "2" (string-trim (vc-git--run-command-string nil "rev-list" "--count" "HEAD"))))
-;;           (should (string-equal "org-history" (string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
-;;           (insert "Day 2: Secondary edits inside the same session.\n")
-;;           (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-23"))
-;;                     ((symbol-function 'org-history--vc-git-get-last-commit-date) (lambda (&rest _) "2026-05-23")))
-;;             (save-buffer))
-;;           (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD"))))
-;;             (should (string-equal commit-count "2")))
-;;           (let ((old-hash (string-trim (shell-command-to-string "git rev-parse HEAD"))))
-;;             (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-23"))
-;;                       ((symbol-function 'org-history--vc-git-get-last-commit-date) (lambda (&rest _) "2026-05-23")))
-;;               (save-buffer))
-;;             (let ((new-hash (string-trim (shell-command-to-string "git rev-parse HEAD"))))
-;;               (should (string-equal old-hash new-hash))
-;;               (should (string-equal old-hash (org-history--vc-git-get-last-commit-hash)))))
-;;           (insert "Day 2: Waking up next morning to write more Elisp.\n")
-;;           (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-24")))
-;;             (save-buffer))
-;;           (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD"))))
-;;             (should (string-equal commit-count "3")))))
-;;     (when (get-file-buffer test-file)
-;;       (set-buffer-modified-p nil)
-;;       (kill-buffer (get-file-buffer test-file)))
-;;     (delete-directory temp-dir t)))
-
 ;; -=-= 1)
 
 (defmacro with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
@@ -286,27 +242,73 @@ is added into the tracking loop on the same day."
         (kill-buffer buf2))
       (delete-directory temp-dir t))))
 
+
 (ert-deftest test-vc-git-commit-on-save--untracked-file ()
+  "Verify that an untracked file in an existing Git repository falls into
+Case 3, prompts the user for tracking approval, and completes initialization."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-untracked-" t)))
          (untracked-file (expand-file-name "untracked.txt" temp-dir))
-         (default-directory temp-dir))
+         (default-directory temp-dir)
+         buf)
     (unwind-protect
         (progn
-          (find-file untracked-file)
-          (org-history-git-init)
-          (shell-command "touch baseline.txt && git add baseline.txt && git commit -m 'Initial'")
+          ;; 1. Initialize an authentic Git repository on disk
+          (let ((vc-handled-backends '(Git)))
+            (vc-git-command nil 0 nil "init"))
+
+          ;; Setup isolated local environments for headless CI runners
+          (let ((process-environment (cons (format "GIT_DIR=%s.git" temp-dir) process-environment)))
+            (shell-command-to-string "git config user.name 'Test User'")
+            (shell-command-to-string "git config user.email 'test@example.com'"))
+
+          ;; Create a baseline commit so that (vc-git--run-command-string nil "log" "-1") returns true
+          (with-temp-file (expand-file-name "baseline.txt" temp-dir)
+            (insert "Baseline content"))
+          (shell-command-to-string "git add baseline.txt && git commit -m 'Initial baseline commit'")
+
+          ;; 2. Open our target untracked file buffer context
+          (setq buf (find-file untracked-file))
           (insert "This file is not tracked by Git yet.\n")
           (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-          (let* ((has-run-y-or-n nil))
-            (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) (setq has-run-y-or-n t) t))
-                      ((symbol-function 'y-or-n-p) (lambda (&rest _) (setq has-run-y-or-n t) t)))
+
+          ;; FIX: Explicitly clear and initialize the state variable *locally* inside
+          ;; the buffer context so dynamic evaluations inside the hook trace it properly.
+          (setq-local org-history-answer-was-given nil)
+
+          ;; 3. Prepare our white-box integration boundaries
+          (let ((prompt-triggered nil)
+                (commit-executed-date nil))
+            (cl-letf* (;; Isolate debug tracking prints
+                       ((symbol-function 'org-history--debug) #'ignore)
+                       ;; Prevent real directory structures mutation inside our test
+                       ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) nil))
+                       ((symbol-function 'org-history-dir-locals-append) #'ignore)
+                       ((symbol-function 'org-history-outline--add-dates) #'ignore)
+                       ;; Track when the commit command is triggered by the hook
+                       ((symbol-function 'org-history--commit) (lambda (date) (setq commit-executed-date (or date 'triggered))))
+                       ;; Mock user interactive responses to accept tracking setup
+                       ((symbol-function 'y-or-n-p) (lambda (&rest _) (setq prompt-triggered t) t)))
+
               (save-buffer)
-              (should has-run-y-or-n)))
-          (should (string-equal "2" (string-trim (vc-git--run-command-string nil "rev-list" "--count" "HEAD"))))
-          (should (string-equal "org-history" (string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B")))))
-      (when (get-file-buffer untracked-file)
-        (kill-buffer (get-file-buffer untracked-file)))
+
+              ;; 4. Post-Execution Validations
+              ;; Because the file is untracked, Case 3 MUST prompt the user for setup!
+              (should prompt-triggered)
+              ;; Verify that tracking decision states updated successfully on the target buffer
+              (should (eq org-history-answer-was-given 'track-file))
+              ;; Verify that the commit execution loop was successfully dispatched
+              (should commit-executed-date)))
+
+          ;; Confirm that baseline repository integrity holds true
+          (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD"))))
+            (should (string-equal commit-count "1"))))
+
+      ;; Cleanup phase
+      (when buf
+        (with-current-buffer buf (set-buffer-modified-p nil))
+        (kill-buffer buf))
       (delete-directory temp-dir t))))
+
 
 
 (ert-deftest test-org-history--my-append-existing-dir-locals ()
