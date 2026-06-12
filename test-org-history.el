@@ -143,7 +143,7 @@
         (should-not (memq #'org-history-hook-for-after-save after-save-hook))))))
 
 
-(ert-deftest test-vc-git-commit-on-save--full-lifecycle2 ()
+(ert-deftest test-org-history-commit-on-save--full-lifecycle2 ()
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
          (test-file (expand-file-name "test-file.txt" temp-dir))
          (default-directory temp-dir))
@@ -165,7 +165,7 @@
         (kill-buffer (get-file-buffer test-file)))
       (delete-directory temp-dir t))))
 
-(ert-deftest test-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
+(ert-deftest test-org-history-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
   "Test interaction when a repository baseline is established, and a second file
 is added into the tracking loop on the same day."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
@@ -243,7 +243,7 @@ is added into the tracking loop on the same day."
       (delete-directory temp-dir t))))
 
 
-(ert-deftest test-vc-git-commit-on-save--untracked-file ()
+(ert-deftest test-org-history-vc-git-commit-on-save--untracked-file ()
   "Verify that an untracked file in an existing Git repository falls into
 Case 3, prompts the user for tracking approval, and completes initialization."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-untracked-" t)))
