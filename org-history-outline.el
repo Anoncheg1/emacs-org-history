@@ -3,6 +3,29 @@
 ;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
+;; URL: https://codeberg.org/Anoncheg/emacs-org-history
+;; Version: 0.1
+;; Package-Requires: ((emacs "29.1"))
+
+;;; License
+
+;; This file is NOT part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+
+;; You should have received a copy of the GNU Affero General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;; Licensed under the GNU Affero General Public License, version 3 (AGPLv3)
+;; <https://www.gnu.org/licenses/agpl-3.0.en.html>
 
 ;;; Commentary:
 
@@ -12,182 +35,7 @@
 
 (require 'color)
 
-;; (defun org-history-outline--outline-attach-date (date-str)
-;;   "Attach overlay with date at the end header with color gradient.
-;; Cursors should be at header position.
-;; Smooth vc-annotate color gradient is used by how old date is.
-;; Overlay is not modifiable and dont modify buffer content.
-;; Automatically deletes older date overlays on the same headline when updated."
-;;   (interactive "sEnter date (YYYY-MM-DD): ")
-;;   (let* ((time-attr (condition-case nil
-;;                         (date-to-time date-str)
-;;                       (error (user-error "Invalid date format! Use YYYY-MM-DD"))))
-;;          ;; 1. Max out at 0 to avoid future negative date math bugs safely in one line
-;;          (days-old (max 0 (floor (- (float-time) (float-time time-attr)) 86400)))
-
-;;          ;; 2. Generate smooth vc-annotate aging color wheel
-;;          (max-days 360)
-;;          (ratio (/ (min days-old max-days) (float max-days)))
-;;          (hue (* ratio 0.66)) ; 0.0 = Red, 0.66 = Blue
-;;          (rgb (color-hsl-to-rgb hue 0.8 0.5))
-;;          (color-hex (apply #'color-rgb-to-hex rgb))
-;;          (lend (1- (line-end-position)))) ; without -1 date will be visible only on opened.
-
-;;     ;; 3. CLEANUP: Wipe old overlays utilizing the "line-end + 1" boundary trick
-;;     (remove-overlays lend (1+ lend) 'identity 'my-org-date)
-
-;;     ;; 4. CREATION: Render the overlay text onto the line boundary
-;;     (let ((ov (make-overlay lend lend)))
-;;       (overlay-put ov 'identity 'my-org-date)
-;;       (overlay-put ov 'priority 100)
-;;       (overlay-put ov 'after-string
-;;                    (propertize (format "  [%s]" date-str)
-;;                                'face `(:foreground ,color-hex :weight bold)
-;;                                'help-echo (format "Age: %d days old" days-old)
-;;                                'read-only t
-;;                                'intangible t
-;;                                'cursor-intangible t)))))
-
-;; (defun org-history-outline--outline-attach-date (date-str)
-;;   "Attach overlay with date at the end header with color gradient.
-;; Cursors should be at header position.
-;; Smooth vc-annotate color gradient is used by how old date is.
-;; Overlay is not modifiable and dont modify buffer content.
-;; Automatically deletes older date overlays on the same headline when updated."
-;;   (interactive "sEnter date (YYYY-MM-DD): ")
-;;   (let* ((time-attr (condition-case nil
-;;                         (date-to-time date-str)
-;;                       (error (user-error "Invalid date format! Use YYYY-MM-DD"))))
-;;          ;; 1. Max out at 0 to avoid future negative date math bugs safely in one line
-;;          (days-old (max 0 (floor (- (float-time) (float-time time-attr)) 86400)))
-;;          ;; 2. Generate smooth vc-annotate aging color wheel
-;;          (max-days 360)
-;;          (ratio (/ (min days-old max-days) (float max-days)))
-;;          (hue (* ratio 0.66)) ; 0.0 = Red, 0.66 = Blue
-;;          (rgb (color-hsl-to-rgb hue 0.8 0.5))
-;;          (color-hex (apply #'color-rgb-to-hex rgb))
-;;          ;; (lend (1- (line-end-position))) ; without -1 date will be visible only on opened.
-;;          (lend (line-end-position))
-;;          ;; --- NEW: Define your target alignment column ---
-;;          (target-column 60))
-
-;;     ;; 3. CLEANUP: Wipe old overlays utilizing the "line-end + 1" boundary trick
-;;     (remove-overlays lend (1+ lend) 'identity 'my-org-date)
-
-;;     ;; 4. CREATION: Render the overlay text onto the line boundary
-;;     (let ((ov (make-overlay lend lend)))
-;;       (overlay-put ov 'identity 'my-org-date)
-;;       (overlay-put ov 'priority 100)
-;;       (overlay-put ov 'after-string
-;;                    (concat
-;;                     ;; Dynamic spacer that pushes the text to target-column
-;;                     (propertize " " 'display `(space :align-to ,target-column))
-;;                     ;; Your formatted date
-;;                     (propertize (format "[%s]" date-str)
-;;                                 'face `(:foreground ,color-hex :weight bold)
-;;                                 'help-echo (format "Age: %d days old" days-old)
-;;                                 'read-only t
-;;                                 'intangible t
-;;                                 'cursor-intangible t))))))
-
-;; (defun org-history-outline--outline-attach-date (date-str)
-;;   "Attach overlay with date at the end header with color gradient.
-;; Cursors should be at header position.
-;; Smooth vc-annotate color gradient is used by how old date is.
-;; Overlay is not modifiable and dont modify buffer content.
-;; Automatically deletes older date overlays on the same headline when updated."
-;;   (interactive "sEnter date (YYYY-MM-DD): ")
-;;   (let* ((time-attr (condition-case nil
-;;                         (date-to-time date-str)
-;;                       (error (user-error "Invalid date format! Use YYYY-MM-DD"))))
-;;          ;; 1. Max out at 0 to avoid future negative date math bugs safely in one line
-;;          (days-old (max 0 (floor (- (float-time) (float-time time-attr)) 86400)))
-;;          ;; 2. Generate smooth vc-annotate aging color wheel
-;;          (max-days 360)
-;;          (ratio (/ (min days-old max-days) (float max-days)))
-;;          (hue (* ratio 0.66)) ; 0.0 = Red, 0.66 = Blue
-;;          (rgb (color-hsl-to-rgb hue 0.8 0.5))
-;;          (color-hex (apply #'color-rgb-to-hex rgb))
-
-;;          ;; --- THE SOLUTION ---
-;;          ;; Look at the last actual string character of the header (just before \n)
-;;          (lend (line-end-position))
-;;          (lstart (1- lend))
-;;          (target-column 60))
-
-;;     ;; 3. CLEANUP: Clear overlays sitting exactly on that last character slot
-;;     (remove-overlays lstart lend 'identity 'my-org-date)
-
-;;     ;; 4. CREATION: Render the overlay text natively inside the engine layout block
-;;     (let* ((ov (make-overlay lstart lend))
-;;            ;; Extract the exact single final character of the heading text
-;;            (last-char (buffer-substring-no-properties lstart lend)))
-;;       (overlay-put ov 'identity 'my-org-date)
-;;       (overlay-put ov 'priority 100)
-
-;;       ;; We use 'display property to tell Emacs:
-;;       ;; "Draw the last character normally, then space over to column 60, then append the date"
-;;       (overlay-put ov 'display
-;;                    (concat
-;;                     last-char
-;;                     (propertize " " 'display `(space :align-to ,target-column))
-;;                     (propertize (format "[%s]" date-str)
-;;                                 'face `(:foreground ,color-hex :weight bold)
-;;                                 'help-echo (format "Age: %d days old" days-old)
-;;                                 'read-only t
-;;                                 'intangible t
-;;                                 'cursor-intangible t))))))
-
-
-;; (defun org-history-outline--outline-attach-date (date-str)
-;;   "Attach overlay with date at the end header with color gradient.
-;; Cursors should be at header position.
-;; Smooth vc-annotate color gradient is used by how old date is.
-;; Overlay is not modifiable and dont modify buffer content.
-;; Automatically deletes older date overlays on the same headline when updated."
-;;   (interactive "sEnter date (YYYY-MM-DD): ")
-;;   (let* ((time-attr (condition-case nil
-;;                         (date-to-time date-str)
-;;                       (error (user-error "Invalid date format! Use YYYY-MM-DD"))))
-;;          ;; 1. Max out at 0 to avoid future negative date math bugs safely in one line
-;;          (days-old (max 0 (floor (- (float-time) (float-time time-attr)) 86400)))
-;;          ;; 2. Generate smooth vc-annotate aging color wheel
-;;          (max-days 360)
-;;          (ratio (/ (min days-old max-days) (float max-days)))
-;;          (hue (* ratio 0.66)) ; 0.0 = Red, 0.66 = Blue
-;;          (rgb (color-hsl-to-rgb hue 0.8 0.5))
-;;          (color-hex (apply #'color-rgb-to-hex rgb))
-
-;;          ;; --- THE RE-FIX ---
-;;          (lend (line-end-position))
-;;          (lstart (1- lend))
-;;          (target-column 60))
-
-;;     ;; 3. CLEANUP: Clear overlays sitting exactly on that last character slot
-;;     (remove-overlays lstart lend 'identity 'my-org-date)
-
-;;     ;; 4. CREATION: Render the layout safely
-;;     (let* ((ov (make-overlay lstart lend))
-;;            (last-char (buffer-substring-no-properties lstart lend))
-;;            ;; Build the layout components cleanly
-;;            (spacer " ")
-;;            (date-text (propertize (format " [%s]" date-str)
-;;                                   'face `(:foreground ,color-hex :weight bold)
-;;                                   'help-echo (format "Age: %d days old" days-old)
-;;                                   'read-only t
-;;                                   'intangible t
-;;                                   'cursor-intangible t)))
-
-;;       ;; Apply the alignment property directly to our spacer string wrapper
-;;       (put-text-property 0 1 'display `(space :align-to ,target-column) spacer)
-
-;;       (overlay-put ov 'identity 'my-org-date)
-;;       (overlay-put ov 'priority 100)
-
-;;       ;; Flatten the display string sequence cleanly so the display engine processes it
-;;       (overlay-put ov 'display (concat last-char spacer date-text)))))
-
-
+;; -=-= variables
 (defcustom org-history-outline-max-days (* 360 2)
   "Maximum number of days to keep in the outline history.
 This value must be an integer representing the day retention threshold.
@@ -211,13 +59,16 @@ Used to calculate max-days range for colors of dates."
   :type 'integer
   :safe #'integerp)
 
+;; -=-= Attach overlay
 (defun org-history-outline--outline-attach-date (date-str)
   "Attach overlay with date at the end header with color gradient.
 Cursors should be at header position.
-Smooth vc-annotate color gradient is used by how old date is.
+DATE-STR is in form of YYYY-MM-DD.
+Smooth `vc-annotate' color gradient is used by how old date is.
 Overlay is not modifiable and dont modify buffer content.
-Automatically deletes older date overlays on the same headline when updated."
-  (interactive "sEnter date (YYYY-MM-DD): ")
+Automatically deletes older date overlays on the same headline when
+ updated."
+  ;; (interactive "sEnter date (YYYY-MM-DD): ")
   (let* ((time-attr (condition-case nil
                         (date-to-time date-str)
                       (error (user-error "Invalid date format! Use YYYY-MM-DD"))))
@@ -270,37 +121,13 @@ Automatically deletes older date overlays on the same headline when updated."
   (font-lock-flush)
   (message "Successfully cleared all header date overlays."))
 
-;; (defun org-history-outline--add-dates ()
-;;   "Print buffer positions for the content of all visible Org headings."
-;;   (interactive)
-;;   (org-map-entries
-
-;;    (lambda ()
-;;      ;; Explicitly skip if the current heading itself is folded/invisible
-;;      ;; Optimizated version of `org-fold-folded-p' for outlines only
-;;      ;; checked as (progn (forward-line 1) (org-fold-folded-p (point) 'headline))
-;;      ;; (org-fold-folded-p (point) 'headline)
-;;      (unless (org-fold-core-get-folding-spec 'headline (point))
-;;        (let* ((start (save-excursion (forward-line 1) (line-number-at-pos)))
-;;               (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
-;;               (start (min start end))
-;;               (end (max start end))
-;;               (date-str (org-history--vc-git-get-range-last-mod-date buffer-file-name start end)))
-;;          ;; (point) - at begin of heading
-;;          (org-history-outline--outline-attach-date date-str)
-;;          ;; (message "Heading: \"%s\" | (%d . %d) | %s"
-;;          ;;          (org-get-heading t t t t) start (max start end) date-str)
-;;          ))) ; end of lambda
-
-;;    t 'file))
-
-;; --------------------------------------------------------
-(defun org-history-outline--add-dates (&optional page-beg page-end)
+;; -=-= Attach-date
+(defun org-history-outline-add-dates (&optional page-beg page-end)
   "Collect line ranges for visible Org headings and apply dates separately.
 Optional arguments PAGE-BEG PAGE-END are position in current buffer.
 Warning: `org-history--vc-git-get-last-commit-date' should be checked."
   (interactive)
-  (org-history--debug "org-history-outline--add-dates %s %s" page-beg page-end)
+  (org-history-debug-print "org-history-outline-add-dates %s %s" page-beg page-end)
   ;; (when (org-history--vc-git-get-last-commit-date) ; or gethash(4 nil) error in `org-history-outline--process-tasks'
   ;; (when (org-history--vc-git-get-last-commit-hash buffer-file-name) ; have commits?
     (let (tasks)
@@ -331,79 +158,23 @@ Warning: `org-history--vc-git-get-last-commit-date' should be checked."
         ;; (message "No visible headings found.")
         )))
 
-;; (defun org-history-outline--process-tasks (tasks)
-;;   "Loop through TASKS to fetch Git dates and apply overlays."
-;;   (let* ((total (length tasks))
-;;          (counter 0)
-;;          (reporter (make-progress-reporter "Fetching Git dates..." 0 total)))
-;;     (dolist (task tasks)
-;;       (let* ((marker (nth 0 task))
-;;              (start-line (nth 1 task))
-;;              (end-line (nth 2 task)))
-
-;;         ;; Move to the heading safely using the marker
-;;         (with-current-buffer (marker-buffer marker)
-;;           (save-excursion
-;;             (goto-char (marker-position marker))
-
-;;             ;; Fetch the date and attach
-;;             (let ((date-str (org-history--vc-git-get-range-last-mod-date
-;;                              buffer-file-name start-line end-line)))
-;;               (org-history-outline--outline-attach-date date-str)
-;;               )))
-
-;;         ;; Clean up marker memory
-;;         (set-marker marker nil)
-
-;;         ;; Update progress bar in the minibuffer
-;;         (setq counter (1+ counter))
-;;         (progress-reporter-update reporter counter)))
-;;     (progress-reporter-done reporter)
-;;     (message "Successfully processed %d headings." total)))
-
-;; (defun org-history-outline--process-tasks (tasks)
-;;   "Process TASKS by fetching Git dates first, then applying overlays in separate loops."
-;;   (let (tasks-with-dates)
-
-;;     ;; PHASE 1: Fetch Git dates (Slow I/O Loop)
-;;     (setq tasks-with-dates
-;;           (mapcar (lambda (task)
-;;                     (let ((marker (nth 0 task))
-;;                           (start (nth 1 task))
-;;                           (end (nth 2 task)))
-;;                       (cons marker (org-history--vc-git-get-range-last-mod-date
-;;                                     buffer-file-name start end))))
-;;                   tasks))
-;;     (message "Successfully fetched Git dates.")
-
-;;     ;; PHASE 2: Apply Overlays (Fast UI Loop using native dolist)
-;;     (dolist (cell tasks-with-dates)
-;;       (let ((marker (car cell))
-;;             (date-str (cdr cell)))
-;;         (with-current-buffer (marker-buffer marker)
-;;           (save-excursion
-;;             (goto-char (marker-position marker))
-;;             (org-history-outline--outline-attach-date date-str)))
-;;         (set-marker marker nil))) ; Free memory safely
-
-;;     (message "Successfully processed %d headings." (length tasks))))
-;; -------------------------------
-
+;; -=-= Process-tasks
 (defvar-local org-history-outline--git-blame-cache nil
-  "Hastable with: Key is line-num, value is date-str.")
-(defvar-local org-history-outline--git-last-commit nil)
+  "Cache for optimization: Hastable - Key is line-num, value is date-str.")
+(defvar-local org-history-outline--git-last-commit nil
+  "Used to check if cache required to be updated.")
 
 (defun org-history-outline--process-tasks (tasks &optional set-oldest)
   "Process TASKS instantly by pre-caching Git blame data using native loops.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  set to oldest date during applying if it not older than
  `org-history-outline-max-days' orginal value."
-  (org-history--debug "org-history-outline--process-tasks N1 %s %s" org-history-outline--git-last-commit)
+  (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" org-history-outline--git-last-commit)
   (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
     (unless (string-equal commit-hash org-history-outline--git-last-commit)
       (setq org-history-outline--git-blame-cache (org-history--vc-git-blame-file buffer-file-name))
       (setq org-history-outline--git-last-commit commit-hash))
-    (org-history--debug "org-history-outline--process-tasks N2")
+    (org-history-debug-print "org-history-outline--process-tasks N2")
     ;; PHASE 1: Process ranges instantly using native loops
     (when org-history-outline--git-blame-cache
       (let* (file-oldest
@@ -429,12 +200,12 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
                           ;; Return pair: (marker . date-str) or nil if unchanged from epoch
                           (cons marker (unless (string= latest "1970-01-01") latest))))
                       tasks)))
-        (org-history--debug "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
+        (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
 
         (when (and set-oldest file-oldest)
           (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest))) ; in repo
           (setq org-history-outline-max-days max-days)
-          (org-history--debug "org-history-outline--process-tasks N3 %s" max-days (org-today) (org-time-string-to-absolute file-oldest))
+          (org-history-debug-print "org-history-outline--process-tasks N3 %s" max-days (org-today) (org-time-string-to-absolute file-oldest))
           ;; check boundaries
           (if (> max-days org-history-outline-max-days)
               (setq org-history-outline-max-days org-history-outline-max-days)
@@ -456,58 +227,58 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
     ;; (message "Successfully processed %d headings." (length tasks))
     ))
 
-;; -=-= timer NOT USED
-(defvar org-history-outline--active-timer nil
-  "Global reference to the running background outline timer.")
+;; ;; -=-= timer NOT USED
+;; (defvar org-history-outline--active-timer nil
+;;   "Global reference to the running background outline timer.")
 
-(defun org-history-outline--add-dates-stop-timer ()
-  "Stop the active org-history outline timer and clean up the reporter."
-  (interactive)
-  (when org-history-outline--active-timer
-    (cancel-timer org-history-outline--active-timer)
-    (setq org-history-outline--active-timer nil)
-    (message "Org history timer stopped.")))
+;; (defun org-history-outline--add-dates-stop-timer ()
+;;   "Stop the active org-history outline timer and clean up the reporter."
+;;   (interactive)
+;;   (when org-history-outline--active-timer
+;;     (cancel-timer org-history-outline--active-timer)
+;;     (setq org-history-outline--active-timer nil)
+;;     (message "Org history timer stopped.")))
 
-(defun org-history-outline--add-dates-run-in-timer ()
-  "Run `org-history-outline--add-dates' every second with a simple reporter."
-  (interactive)
+;; (defun org-history-outline--add-dates-run-in-timer ()
+;;   "Run `org-history-outline-add-dates' every second with a simple reporter."
+;;   (interactive)
 
-  ;; 1. Ensure no duplicate timers are running
-  (when org-history-outline--active-timer
-    (org-history-outline--add-dates-stop-timer))
+;;   ;; 1. Ensure no duplicate timers are running
+;;   (when org-history-outline--active-timer
+;;     (org-history-outline--add-dates-stop-timer))
 
-  (let* ((current-buf (current-buffer))
-         ;; 2. Initialize a simple non-deterministic progress reporter
-         (reporter (make-progress-reporter "Processing Org history visibility...")))
+;;   (let* ((current-buf (current-buffer))
+;;          ;; 2. Initialize a simple non-deterministic progress reporter
+;;          (reporter (make-progress-reporter "Processing Org history visibility...")))
 
-    ;; 3. Start the repeating timer
-    (setq org-history-outline--active-timer
-          (run-with-timer
-           1.0 1.0
-           (lambda ()
-             ;; Guard clause: Stop if the buffer was killed/closed
-             (if (not (buffer-live-p current-buf))
-                 (progn
-                   (progress-reporter-done reporter)
-                   (org-history-outline--add-dates-stop-timer))
+;;     ;; 3. Start the repeating timer
+;;     (setq org-history-outline--active-timer
+;;           (run-with-timer
+;;            1.0 1.0
+;;            (lambda ()
+;;              ;; Guard clause: Stop if the buffer was killed/closed
+;;              (if (not (buffer-live-p current-buf))
+;;                  (progn
+;;                    (progress-reporter-done reporter)
+;;                    (org-history-outline--add-dates-stop-timer))
 
-               ;; Update the visual reporter spinner
-               (progress-reporter-update reporter)
+;;                ;; Update the visual reporter spinner
+;;                (progress-reporter-update reporter)
 
-               ;; Execute your process safely inside the target buffer
-               (with-current-buffer current-buf
-                 (save-excursion
-                   (condition-case err
-                       (progn
-                         (org-history-outline--add-dates)
-                         (progress-reporter-done reporter)
-                         (org-history-outline--add-dates-stop-timer))
-                     (error
-                      (message "Timer processing error: %s"
-                               (error-message-string err))))))))))))
+;;                ;; Execute your process safely inside the target buffer
+;;                (with-current-buffer current-buf
+;;                  (save-excursion
+;;                    (condition-case err
+;;                        (progn
+;;                          (org-history-outline-add-dates)
+;;                          (progress-reporter-done reporter)
+;;                          (org-history-outline--add-dates-stop-timer))
+;;                      (error
+;;                       (message "Timer processing error: %s"
+;;                                (error-message-string err))))))))))))
 
 ;;; provide
 
 (provide 'org-history-outline)
 
-;;; org-history.el ends here
+;;; org-history-outline.el ends here

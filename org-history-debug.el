@@ -3,6 +3,29 @@
 ;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
+;; URL: https://codeberg.org/Anoncheg/emacs-org-history
+;; Version: 0.1
+;; Package-Requires: ((emacs "29.1"))
+
+;;; License
+
+;; This file is NOT part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU Affero General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU Affero General Public License for more details.
+
+;; You should have received a copy of the GNU Affero General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;; Licensed under the GNU Affero General Public License, version 3 (AGPLv3)
+;; <https://www.gnu.org/licenses/agpl-3.0.en.html>
 
 ;;; Commentary:
 
@@ -11,14 +34,6 @@
 
 ;; Check if there is .git
 ;; (vc-git-root buffer-file-name)
-
-;; TODO:
-;; - check if .git already exist
-;; - mouseover notification for Org header
-;; - list of folders
-;; - command to add current folder to list
-;; - check if .gitignore is not exist already
-;; - test with modifying of two files
 
 ;;; Code:
 
@@ -30,12 +45,17 @@
   :tag "Org dates for outlines"
   :group 'org-history)
 
-
 (defcustom org-history-debug-buffer nil
   "If non-nil, enable debuging to a new buffer with such name.
 Set to something like \"*debug-history*\"  to enable debugging."
   :type '(choice (const :tag "No debugging" nil)
                  (string :tag "Name of buffer"))
+  :group 'org-history-debug)
+
+(defcustom org-history-debug-ert-enabled nil
+  "Non-nil means use stdout instead of separete buffer for debugging.
+useful for debugging in ERT."
+  :type 'boolean
   :group 'org-history-debug)
 
 (defcustom org-history-debug-timestamp-flag t
@@ -72,18 +92,18 @@ Formats by removing all '%s' from FMT and appending ' %s' for each ARGS."
 
 
 
-(defun org-history--debug (&rest args)
+(defun org-history-debug-print (&rest args)
   "If firt argument of ARGS is a stringwith %s than behave like format.
 Otherwise format every to string and concatenate.
 Return last argument, but should not be used for return value."
   (when (and (or org-history-debug-buffer
-                 (bound-and-true-p ert-enabled))
+                 (bound-and-true-p org-history-debug-ert-enabled))
              args)
 
     (save-excursion
       (let* ((buf-exist (and org-history-debug-buffer (get-buffer org-history-debug-buffer)))
              (bu (or buf-exist
-                     (and (bound-and-true-p ert-enabled) (current-buffer))
+                     (and (bound-and-true-p org-history-debug-ert-enabled) (current-buffer))
                      (get-buffer-create org-history-debug-buffer)))
              (current-window (selected-window))
              (bu-window (or (get-buffer-window bu)
@@ -112,7 +132,7 @@ Return last argument, but should not be used for return value."
             ;; else buffer just created
             (local-set-key "q" #'quit-window))
            ;; - scroll debug buffer down
-          (when (and bu-window (not (bound-and-true-p ert-enabled)))
+          (when (and bu-window (not (bound-and-true-p org-history-debug-ert-enabled)))
               (with-selected-window (get-buffer-window bu)
                    (goto-char (point-max))))
           ;; ;; - output caller function ( working, but too heavy)
@@ -143,7 +163,7 @@ Return last argument, but should not be used for return value."
             ;; - 3) output as: timestamp - function - ```debug or "safe-format"
             (when result-string
               ;; - two ways to output: for ert.el and to debug buffer.
-              (if (bound-and-true-p ert-enabled)
+              (if (bound-and-true-p org-history-debug-ert-enabled)
                   (princ (concat timestamp result-string "\n"))
                 ;; else
                 ;; first word insert as a link
@@ -194,6 +214,7 @@ Return last argument, but should not be used for return value."
 
         (message "Recent Git Commits:\n%s" (string-trim (buffer-string)))))))
 
+
 (provide 'org-history-debug)
 
-;;; org-history.el ends here
+;;; org-history-debug.el ends here

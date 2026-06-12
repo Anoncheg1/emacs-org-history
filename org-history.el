@@ -2,11 +2,11 @@
 
 ;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
-;; Keywords: org, outline, hideshow
+;; Keywords: org, outline, vc
 ;; URL: https://codeberg.org/Anoncheg/emacs-org-history
 ;; Version: 0.1
 ;; Created: 30 may 2026
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "29.1"))
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
 
 ;;; License
@@ -58,6 +58,7 @@
 ;; - command to add current folder to list
 ;; - tests for -outlines  functions and itegral tests for minor mode
 
+;; Require 29.1 for `org-fold-folded-p'
 
 ;;; Code:
 
@@ -85,7 +86,7 @@ Also used to reinitialize if no commits was made."
   :type '(repeat (repeat string))
   :group 'org-history)
 
-(defcustom gitignore-content '("*.elc"
+(defcustom org-history-gitignore-content '("*.elc"
                                "*~"
                                "#*#"
                                "/.emacs.desktop"
@@ -108,10 +109,10 @@ Ignores: compiled files, backups, and lock files."
   "When non-nil, auto-commit at saving for this file is active.
 Used for asking user whether to track current file.
 
-Possible values are:
-- nil            : Tracking status not set yet.
-- 'dont-track-file: Do NOT track this file.
-- 'track-file     : Track this file.")
+Possible symbol values:
+- nil			Tracking status not set yet.
+- \='dont-track-file	Do NOT track this file.
+- \='track-file		Track this file.")
 
 ;; -=-= functions: VC-git
 
@@ -129,10 +130,9 @@ Uses `default-derectory'."
   "Return string with the last commit or nil.
 If FILE provided check commits only for file, otherwise any commit.
 Uses variable `buffer-file-name'.
-Note: `vc-git-working-revision' - working with directory,
- 'vc-working-revision', not only with file.
-Optional argument BACKEND specifies VC system, e.g., 'git'."
-  (org-history--debug "org-history--vc-git-get-last-commit-hash N1 %s" file)
+Note: `vc-git-working-revision' - accept directory as argument,
+ `vc-working-revision' - only with file."
+  (org-history-debug-print "org-history--vc-git-get-last-commit-hash N1 %s" file)
   (if file
       (when (vc-backend file)
         (vc-working-revision file)) ; require tracked file with commit
@@ -279,8 +279,8 @@ Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
  rule for REL-FILE-NAME to activate `org-mistory-mode'.
 Use `default-directory' and variable `buffer-file-name' for config reading if
  CONFIG is not provided."
-  (org-history--debug "org-history--dir-locals-p N1 %s" rel-file-name)
-  (org-history--debug "org-history--dir-locals-p N1" config)
+  (org-history-debug-print "org-history--dir-locals-p N1 %s" rel-file-name)
+  (org-history-debug-print "org-history--dir-locals-p N1" config)
   (let* ((rel-file-name (or rel-file-name (file-relative-name buffer-file-name default-directory)))
          (config (or config (when (file-exists-p ".dir-locals.el")
                               (with-temp-buffer
@@ -299,7 +299,8 @@ Use `default-directory' and variable `buffer-file-name' for config reading if
   "Add an `org-history-mode' activation to TARGET-DIR/.dir-locals.el.
 Uses variable `buffer-file-name' and `default-directory' variables.
 Safely merges with existing mode settings without overwriting rules for
- other files."
+ other files.
+Return .dir-locals.el file path if added."
   (interactive "DSelect directory for .dir-locals.el: ")
   (unless buffer-file-name
     (user-error "org-history: Current buffer is not visiting a file"))
@@ -320,8 +321,8 @@ Safely merges with existing mode settings without overwriting rules for
                                                      (expand-file-name ,rel-file-name default-directory)))
                               (org-history-mode 1)))))
 
-    (if (org-history--dir-locals-p rel-file-name config)
-        (message ".dir-locals.el is already configured for %s" rel-file-name)
+    (unless (org-history--dir-locals-p rel-file-name config)
+      ;; (message ".dir-locals.el is already configured for %s" rel-file-name)
       ;; 3. Destructive-safe update of the alist using built-in alist-get
       (let ((org-entries (cdr (assoc 'org-mode config))))
         (setf (alist-get 'org-mode config) (cons new-rule org-entries)))
@@ -330,8 +331,8 @@ Safely merges with existing mode settings without overwriting rules for
       (with-temp-file file-path
         (let (print-level print-length)
           (pp config (current-buffer))))
-      (message "Successfully synchronized .dir-locals.el for %s" rel-file-name))
-    file-path))
+      (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
+      file-path)))
 
 ;; -=-= functions: init .git
 
@@ -370,7 +371,7 @@ Use `default-directory'."
       ;; Create  .gitignore
       (when (not (file-exists-p ".gitignore"))
         (with-temp-file  ".gitignore"
-          (insert (mapconcat 'identity gitignore-content "\n") "\n")
+          (insert (mapconcat #'identity org-history-gitignore-content "\n") "\n")
           ;; (save-buffer
           (write-file ".gitignore")
           (basic-save-buffer)))
@@ -387,7 +388,7 @@ Use `default-directory'."
 
       ;; ;; Refresh the state to update vc-state immediately
       ;; (vc-refresh-state)
-      ;; (org-history--debug "org-history-git-init" (org-history--vc-git-status))
+      ;; (org-history-debug-print "org-history-git-init" (org-history--vc-git-status))
       ;; (vc-responsible-backend default-directory) ; fix vc-root-dir to return without first commit
       (setq org-history-answer-was-given 'track-file)
 
@@ -410,10 +411,10 @@ Use `default-directory'."
          :global)))
 
 ;; -=-= hook: after-save
-
 (defun org-history--git-get-last-commit-message (&optional file)
-  "Get the last Git commit message globally, or for a specific FILE if provided.
-Returns the trimmed message string, or nil if an error occurs (e.g., no commits exist)."
+  "Get any last Git commit message, or for FILE if provided.
+Returns the trimmed message string, or nil if an error occurs (e.g., no
+ commits exist)."
   (when (or (not file) (and file (file-exists-p file)))
     ;; The first element here must be the command string "log", NOT nil.
     (let ((args (if file
@@ -427,7 +428,7 @@ Returns the trimmed message string, or nil if an error occurs (e.g., no commits 
   "Execute the commit or amend routines based on the presence of LAST-COMMIT-DATE.
 Uses variable `buffer-file-name'.
 Assumes tracking confirmation has already been validated and set."
-  (let ((current-date (format-time-string "%Y-%m-%d"))
+  (let ((current-date (format-time-string "%F")) ; Y-%m-%d
         (last-commit-message (when last-commit-date
                                (org-history--git-get-last-commit-message))))
     (if (and last-commit-date
@@ -459,7 +460,7 @@ When an org file is saved, check Git tracking status and org-history
              default-directory)
     (let ((git-root (vc-git-root buffer-file-name))
           (is-file-tracked (eq 'Git (vc-backend buffer-file-name)))
-          (current-date (format-time-string "%Y-%m-%d")))
+          (current-date (format-time-string "%F"))) ; Y-%m-%d
       (let ((default-directory (or git-root
                                    default-directory)))
 
@@ -478,18 +479,18 @@ When an org file is saved, check Git tracking status and org-history
           ;; - Case 1: No Git repository exists at all
           ;; - Case 2: Git repo exists + same day + org-history prefix -> Transparently Amend (No prompt)
           ;; - Case 3: Git repo exists, but requires a new commit or initial tracking approval
-          (org-history--debug "org-history-hook-for-after-save N1 git-root=%s is-file-tracked=%s current-date=%s" git-root is-file-tracked current-date)
-          (org-history--debug "org-history-hook-for-after-save N1 default-directory=%s last-commit-date-file=%s last-commit-message-global=%s" default-directory last-commit-date-file last-commit-message-global)
+          (org-history-debug-print "org-history-hook-for-after-save N1 git-root=%s is-file-tracked=%s current-date=%s" git-root is-file-tracked current-date)
+          (org-history-debug-print "org-history-hook-for-after-save N1 default-directory=%s last-commit-date-file=%s last-commit-message-global=%s" default-directory last-commit-date-file last-commit-message-global)
 
           ;; --- CASES ---
           (cond
            ;; Case 1: No Git repository exists at all
            ((not git-root)
-            (org-history--debug "org-history-hook-for-after-save Case1")
+            (org-history-debug-print "org-history-hook-for-after-save Case1")
             (if (y-or-n-p (format "org-history: Do git init and activate auto-commit for this file in\n%s? " default-directory))
                 (progn
                   (org-history-git-init rel-file-name) ; add .dir-locals.el
-                  (org-history-outline--add-dates)
+                  (org-history-outline-add-dates)
                   (setq org-history-answer-was-given 'track-file))
               (setq org-history-answer-was-given 'dont-track-file)))
 
@@ -497,7 +498,7 @@ When an org file is saved, check Git tracking status and org-history
            ((and last-commit-date-file
                  (string-equal last-commit-date-file current-date)
                  (string-prefix-p "org-history" last-commit-message-global))
-            (org-history--debug "org-history-hook-for-after-save Case2 %s"  (org-history--dir-locals-p rel-file-name)  (not org-history-answer-was-given))
+            (org-history-debug-print "org-history-hook-for-after-save Case2 %s"  (org-history--dir-locals-p rel-file-name)  (not org-history-answer-was-given))
             ;; 1. Ensure we have a tracking decision if we don't already
             (when (and (not (org-history--dir-locals-p rel-file-name)) ; dir-locals
                        (not org-history-answer-was-given))
@@ -511,7 +512,7 @@ When an org file is saved, check Git tracking status and org-history
 
            ;; Case 3: Git repo exists, but requires a new commit or initial tracking approval
            (t
-            (org-history--debug "org-history-hook-for-after-save Case3")
+            (org-history-debug-print "org-history-hook-for-after-save Case3")
             (let ((dir-locals (org-history--dir-locals-p rel-file-name)))
               ;; 1. Ensure we have a clear tracking decision
               (unless (and org-history-answer-was-given dir-locals)
@@ -534,7 +535,7 @@ When an org file is saved, check Git tracking status and org-history
 
                 (org-history--commit last-commit-date-file)
                 (unless last-commit-date-file
-                  (org-history-outline--add-dates))))))
+                  (org-history-outline-add-dates))))))
 
           ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
           (vc-file-clearprops buffer-file-name))))))
@@ -543,7 +544,7 @@ When an org file is saved, check Git tracking status and org-history
 (defun org-history--show-dates-at-unfold (orig-fun &rest args)
   "Add dates for subheaders at unfolding.
 Checks if user interactively unfolded a heading.
-Triggered after 'org-cycle'.
+Triggered after `org-cycle'.
 Reliably check for interactive execution using :around advice.
 Argument ORIG-FUN is `org-cycle' and its ARGS."
   ;; 1. Check interactivity FIRST while org-cycle is at the top of the stack
@@ -561,10 +562,9 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
                     (end-of-line)
                     (org-fold-folded-p nil 'outline)))) ; 'headline ?
     (let ((vc-handled-backends '(Git)))
-      ;; (when (org-history--vc-git-get-last-commit-hash buffer-file-name) ; are there commits?
         (let ((start (save-excursion (forward-line 1) (point)))
               (end (save-excursion (org-end-of-subtree t t) (point))))
-          (org-history-outline--add-dates start end))
+          (org-history-outline-add-dates start end))
         ;; (message "Interactively unfolded heading!")
         ))))
 
@@ -573,7 +573,7 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
 STATE may be `overview', `contents', or `all'."
   (when (eq state 'contents)
     (let ((vc-handled-backends '(Git)))
-      (org-history-outline--add-dates (point-min) (point-max)))))
+      (org-history-outline-add-dates (point-min) (point-max)))))
 
 ;; -=-= minor mode
 (define-minor-mode org-history-mode
@@ -594,7 +594,7 @@ STATE may be `overview', `contents', or `all'."
                   (org-history--commit nil)) ; add commit
               ;; else
               (setq org-history-answer-was-given 'dont-track-file)))
-          (org-history-outline--add-dates))
+          (org-history-outline-add-dates))
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
         (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
         (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t))

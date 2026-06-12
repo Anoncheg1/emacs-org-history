@@ -1,17 +1,35 @@
+;;; test-org-history.el --- Tests -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
+;; SPDX-License-Identifier: AGPL-3.0-or-later
+;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
+;; URL: https://codeberg.org/Anoncheg/emacs-org-history
+;; Version: 0.1
+;; Package-Requires: ((emacs "29.1"))
+
 (require 'ert)
 (require 'cl-lib)
 (require 'vc-git)
 (require 'org-history)
 (require 'org-history-debug)
 
-(defvar ert-enabled t)
-(when org-history-debug-buffer
-  (setq ert-enabled nil))
+
+;;; Commentary:
+
+;; tests for test-org-history
+
+;;; Code:
+
+(setopt org-history-debug-ert-enabled (not org-history-debug-buffer))
 
 ;; -=-= 1)
 
-(defmacro with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
-  "Set up an isolated temporary Git and file environment for org-history testing."
+(defmacro test-org-history-with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
+  "Set up an isolated temporary Git and file environment for org-history testing.
+Argument BUFFER-VAR .
+Argument FILE-VAR ss.
+Argument TEMP-DIR-VAR ss.
+Optional argument BODY sd."
   (declare (indent 3) (debug t))
   `(let* ((,temp-dir-var (file-name-as-directory (make-temp-file "org-history-test-" t)))
           (,file-var (expand-file-name "test-notes.org" ,temp-dir-var))
@@ -20,9 +38,9 @@
      (unwind-protect
          (progn
            ;; Initialize dummy functions that are called in the hook but not provided
-           (cl-letf* (((symbol-function 'org-history--debug) #'ignore)
+           (cl-letf* (((symbol-function 'org-history-debug-print) #'ignore)
                       ((symbol-function 'org-history-git-init) #'ignore)
-                      ((symbol-function 'org-history-outline--add-dates) #'ignore)
+                      ((symbol-function 'org-history-outline-add-dates) #'ignore)
                       ((symbol-function 'org-history-dir-locals-append) #'ignore)
                       ((symbol-function 'org-history--commit) #'ignore))
              ,@body))
@@ -39,11 +57,14 @@
 ;; =========================================================================
 
 (ert-deftest test-org-history-hook--case1-user-accepts ()
-  "Case 1: No Git repo. User answers YES to initializing tracking."
-  (with-org-history-test-env buf file temp-dir
+  "Case 1: No Git repo.  User answers YES to initializing tracking."
+  (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
     (insert "Heading 1\n")
+
+    ;; FIX: Make sure buf is referenced
+    (ignore buf)
 
     (let ((init-called nil))
       (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) nil))
@@ -56,10 +77,13 @@
           (should (eq org-history-answer-was-given 'track-file)))))))
 
 (ert-deftest test-org-history-hook--case1-user-declines ()
-  "Case 1: No Git repo. User answers NO to initializing tracking."
-  (with-org-history-test-env buf file temp-dir
+  "Case 1: No Git repo.  User answers NO to initializing tracking."
+  (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
+
+    ;; FIX: Make sure buf is referenced
+    (ignore buf)
 
     (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) nil))
               ((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
@@ -74,9 +98,12 @@
 
 (ert-deftest test-org-history-hook--case2-transparent-amend ()
   "Case 2: Same-day file edits with org-history history should amend cleanly without prompt."
-  (with-org-history-test-env buf file temp-dir
+  (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
+
+    ;; FIX: Make sure buf is referenced
+    (ignore buf)
 
     (let ((commit-called-with nil))
       (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
@@ -97,10 +124,13 @@
 ;; =========================================================================
 
 (ert-deftest test-org-history-hook--case3-new-day-commit ()
-  "Case 3: A Git repo exists, but it's a new calendar day. Should trigger a brand new commit."
-  (with-org-history-test-env buf file temp-dir
+  "Case 3: A Git repo exists, but it's a new calendar day.  Should trigger a brand new commit."
+  (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
+
+    ;; FIX: Make sure buf is referenced
+    (ignore buf)
 
     (let ((commit-called nil))
       (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
@@ -117,17 +147,20 @@
           (should commit-called))))))
 
 ;; =========================================================================
-;; MINOR MODE INTERACTION: org-history-mode
+;; MINOR MODE INTERACTION: `org-history-mode'
 ;; =========================================================================
 
 (ert-deftest test-org-history-mode-activation ()
-  "Ensure org-history-mode safely activates inside org buffers and binds hooks correctly."
-  (with-org-history-test-env buf file temp-dir
+  "Ensure `org-history-mode' safely activates inside org buffers and binds hooks correctly."
+  (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
 
+    ;; FIX: Make sure buf is referenced
+    (ignore buf)
+
     (cl-letf (((symbol-function 'org-history--vc-git-get-last-commit-hash) (lambda () "mocked-hash"))
-              ((symbol-function 'org-history-outline--add-dates) #'ignore)
+              ((symbol-function 'org-history-outline-add-dates) #'ignore)
               ((symbol-function 'org-history--show-dates-at-unfold) #'ignore)
               ((symbol-function 'org-history--cycle-hook) #'ignore))
 
@@ -166,8 +199,9 @@
       (delete-directory temp-dir t))))
 
 (ert-deftest test-org-history-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
-  "Test interaction when a repository baseline is established, and a second file
-is added into the tracking loop on the same day."
+  "Test.
+Interaction when a repository baseline is established, and a second file
+ is added into the tracking loop on the same day."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
          (test-file1 (expand-file-name "test-file1.txt" temp-dir))
          (test-file2 (expand-file-name "test-file2.txt" temp-dir))
@@ -244,8 +278,10 @@ is added into the tracking loop on the same day."
 
 
 (ert-deftest test-org-history-vc-git-commit-on-save--untracked-file ()
-  "Verify that an untracked file in an existing Git repository falls into
-Case 3, prompts the user for tracking approval, and completes initialization."
+  "Test.
+Verify that an untracked file in an existing Git repository falls into
+ Case 3, prompts the user for tracking approval, and completes
+ initialization."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-untracked-" t)))
          (untracked-file (expand-file-name "untracked.txt" temp-dir))
          (default-directory temp-dir)
@@ -279,11 +315,11 @@ Case 3, prompts the user for tracking approval, and completes initialization."
           (let ((prompt-triggered nil)
                 (commit-executed-date nil))
             (cl-letf* (;; Isolate debug tracking prints
-                       ((symbol-function 'org-history--debug) #'ignore)
+                       ((symbol-function 'org-history-debug-print) #'ignore)
                        ;; Prevent real directory structures mutation inside our test
                        ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) nil))
                        ((symbol-function 'org-history-dir-locals-append) #'ignore)
-                       ((symbol-function 'org-history-outline--add-dates) #'ignore)
+                       ((symbol-function 'org-history-outline-add-dates) #'ignore)
                        ;; Track when the commit command is triggered by the hook
                        ((symbol-function 'org-history--commit) (lambda (date) (setq commit-executed-date (or date 'triggered))))
                        ;; Mock user interactive responses to accept tracking setup
@@ -416,7 +452,7 @@ Case 3, prompts the user for tracking approval, and completes initialization."
 ;; =========================================================================
 
 (ert-deftest test-org-history-hook--silently-ignores-non-file-buffers ()
-  "Tricky: `org-history-hook-for-after-save' checks `buffer-file-name'.
+  "Tricky: `org-history-hook-for-after-save' checks variable `buffer-file-name'.
 If a user runs `mt-mode' or saves a temporary buffer without an active
 backing file, the hook must exit immediately without triggering `y-or-n-p'."
   (with-temp-buffer
@@ -434,30 +470,45 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
 ;; =========================================================================
 ;; TRICKY TEST 2: The `called-interactively-p` Advice Stack Trap
 ;; =========================================================================
+;; (ert-deftest test-org-history--show-dates-interactivity-stack-depth ()
+;;   "Tricky: `called-interactively-p` with 'any checks the *entire* call stack.
+;; If `org-cycle' is wrapped inside another non-interactive function wrapper
+;; higher up, `called-interactively-p' might return non-nil anyway.
+;; This test ensures the advice cleanly manages this behavior."
+;;   (let ((add-dates-called nil)
+;;         (mock-orig-fun (lambda (&rest _) nil)))
+
+;;     (cl-letf (((symbol-function 'org-at-heading-p) (lambda () t))
+;;               ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil)) ;; Unfolded
+;;               ((symbol-function 'org-history-outline-add-dates) (lambda (&rest _) (setq add-dates-called t)))
+;;               (org-history-mode t))
+
+;;       ;; Simulate an execution where an interactive command called a helper,
+;;       ;; which then triggered the advice loop.
+;;       (cl-letf (((symbol-function 'called-interactively-p)
+;;                  (lambda (kind)
+;;                    ;; If your advice checks 'any, it risks catching background loops.
+;;                    (if (eq kind 'any) t nil))))
+
+;;         (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
+;;         (should add-dates-called)))))
 
 (ert-deftest test-org-history--show-dates-interactivity-stack-depth ()
-  "Tricky: `called-interactively-p` with 'any checks the *entire* call stack.
-If `org-cycle' is wrapped inside another non-interactive function wrapper
-higher up, `called-interactively-p' might return non-nil anyway.
-This test ensures the advice cleanly manages this behavior."
-  (let ((add-dates-called nil)
-        (mock-orig-fun (lambda (&rest _) nil)))
-
-    (cl-letf (((symbol-function 'org-at-heading-p) (lambda () t))
-              ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil)) ;; Unfolded
-              ((symbol-function 'org-history-outline--add-dates) (lambda (&rest _) (setq add-dates-called t)))
-              (org-history-mode t))
-
-      ;; Simulate an execution where an interactive command called a helper,
-      ;; which then triggered the advice loop.
-      (cl-letf (((symbol-function 'called-interactively-p)
-                 (lambda (kind)
-                   ;; If your advice checks 'any, it risks catching background loops.
-                   (if (eq kind 'any) t nil))))
-
-        (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
-        (should add-dates-called)))))
-
+  (with-temp-buffer
+    (org-mode)
+    (insert "* Dummy Heading\n")
+    (goto-char (point-min))
+    (let ((add-dates-called nil)
+          (mock-orig-fun (lambda (&rest _) nil)))
+      (cl-letf (;; Fix: Change (lambda () t) to (lambda (&rest _) t)
+                ((symbol-function 'org-at-heading-p) (lambda (&rest _) t))
+                ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil))
+                ((symbol-function 'org-history-outline-add-dates) (lambda (&rest _) (setq add-dates-called t)))
+                (org-history-mode t))
+        (cl-letf (((symbol-function 'called-interactively-p)
+                   (lambda (kind) (if (eq kind 'any) t nil))))
+          (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
+          (should add-dates-called))))))
 
 ;; =========================================================================
 ;; FIXED TEST 4: Minor Mode Crash Protection in Out-Of-Scheme Buffers
@@ -489,10 +540,11 @@ clean error and refuses to attach hooks."
 ;; =========================================================================
 
 (ert-deftest test-org-history-cycle-hook--handles-malformed-and-custom-states ()
-  "Robust: Verify `org-history--cycle-hook' behaves predictably
-when third-party extensions pass non-standard states or empty selections."
+  "Test.
+Robust: Verify `org-history--cycle-hook' behaves predictably when
+ third-party extensions pass non-standard states or empty selections."
   (let ((dates-calculated 0))
-    (cl-letf (((symbol-function 'org-history-outline--add-dates)
+    (cl-letf (((symbol-function 'org-history-outline-add-dates)
                (lambda (&rest _) (cl-incf dates-calculated))))
 
       (with-temp-buffer
@@ -514,8 +566,9 @@ when third-party extensions pass non-standard states or empty selections."
 
 
 (ert-deftest test-org-history-hook--case2-true-filesystem-behavior ()
-  "Robust: Verify Case 2's transparent commit vs prompt fork using
-actual filesystem directory structures instead of deep function overrides."
+  "Test.
+Robust: Verify Case 2's transparent commit vs prompt fork using actual
+ filesystem directory structures instead of deep function overrides."
   (let* ((temp-dir (file-name-as-directory (make-temp-file "org-hist-c2-real-" t)))
          (test-file (expand-file-name "notes.org" temp-dir))
          (dir-locals-file (expand-file-name ".dir-locals.el" temp-dir))
@@ -573,3 +626,7 @@ actual filesystem directory structures instead of deep function overrides."
       (when buf (kill-buffer buf))
       (when (file-exists-p temp-dir)
         (delete-directory temp-dir t)))))
+
+(provide 'test-org-history)
+
+;;; test-org-history.el ends here
