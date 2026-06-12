@@ -1,4 +1,4 @@
-;;; org-history.el --- org-mode headers dates with git -*- lexical-binding: t; -*-
+;;; org-history.el --- Show Dates for Org headers from vcs + auto-commit -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
@@ -41,29 +41,27 @@
 
 ;; Useful code:
 
-;; Check if file is tracked:
-;; (vc-backend buffer-file-name)
+;; (vc-backend buffer-file-name) or (vc-root-dir)
+;; - Check if file is tracked, .git should exist
 
-;; Check if there is .git
 ;; (vc-git-root buffer-file-name)
+;; - Check if there is .git
 
 ;; How this works:
 
 ;; We accuratelly do "git commit --amend" for same date or create new
-;;  commit if date changed
+;;  commit if date changed.
 
 ;;; TODO:
 ;; - check org-history-directories
 ;; - make it work with outline mode.
 ;; - command to add current folder to list
 ;; - tests for -outlines  functions and itegral tests for minor mode
-;; - now we check if org-history-hook-for-after-save is bound as local
-;;  or global hook. Why we need mode? how they work togeter?
-;;  - ability to track only one file or while folder
-;;  - check for error if .git exist with commits but error at commit
-;;  because of no credentials.
+
 
 ;;; Code:
+
+;; Touch: I was looking for a job for many years. They are so much pigs, you even cant imagine.
 
 (require 'vc)
 (require 'vc-git)
@@ -98,14 +96,15 @@ Ignores: compiled files, backups, and lock files."
   :type '(repeat string)
   :group 'org-history)
 
-(defcustom org-history-directories nil
-  "List of directories that processed without questions.
-If `org-history-hook-for-after-save' set as global hook.
-TODO: testing and refining required."
-  :type 'string
-  :group 'org-history)
+;; ;; NOT USED
+;; (defcustom org-history-directories nil
+;;   "List of directories that processed without questions.
+;; If `org-history-hook-for-after-save' set as global hook.
+;; TODO: testing and refining required."
+;;   :type 'string
+;;   :group 'org-history)
 
-(defvar-local org-history-track-file nil
+(defvar-local org-history-answer-was-given nil
   "When non-nil, auto-commit at saving for this file is active.
 Used for asking user whether to track current file.
 
@@ -126,32 +125,37 @@ Uses `default-derectory'."
       (dolist (prop '(vc-backend vc-state vc-working-revision vc-name))
         (vc-file-setprop root prop nil)))))
 
-(defun org-history--vc-get-last-commit (&optional backend)
+(defun org-history--vc-git-get-last-commit-hash (&optional file)
   "Return string with the last commit or nil.
-Uses `default-derectory'."
-  (when-let ((root (vc-root-dir))) ; not nil even without commits
-    (vc-working-revision root (or backend 'Git))))
+If FILE provided check commits only for file, otherwise any commit.
+Uses buffer-file-name
+Note: `vc-git-working-revision' - working with directory,
+ 'vc-working-revision', not only with file.
+Optional argument BACKEND specifies VC system, e.g., 'git'."
+  (org-history--debug "org-history--vc-git-get-last-commit-hash N1 %s" file)
+  (if file
+      (when (vc-backend file)
+        (vc-working-revision file)) ; require tracked file with commit
+    ;; else
+    (when-let ((path (vc-git-root buffer-file-name)))
+      (vc-git-working-revision path))))
 
-;; (defun org-history--vc-git-get-last-commit-date ()
-;;   "Return string with the last commit date or nil.
-;; Uses `default-derectory'."
-;;   (when-let ((rev (org-history--vc-get-last-commit 'Git)))
-;;     (with-temp-buffer
-;;       ;; 't' makes this synchronous so the buffer fills before we read it
-;;       (vc-git-command (current-buffer) 0 nil
-;;                       "show" "-s" "--format=%as" rev)
-;;       (string-trim (buffer-string)))))
-
-(defun org-history--vc-git-get-last-commit-date ()
-  "Return string with the last commit date or nil.
-Uses `default-derectory'."
-  (when-let ((d (vc-git--run-command-string nil "show" "-s" "--format=%as")))
-    (string-trim d)))
-
+(defun org-history--vc-git-get-last-commit-date (&optional file)
+  "Get commit date for FILE or for last commit.
+Return string date YYYY-MM-DD or nil.
+FILE should be tracked by git."
+  (if file
+      (when (vc-backend file)
+        (when-let ((d (vc-git--run-command-string buffer-file-name "log" "-1" "--format=%as" file)))
+          (string-trim d)))
+    ;; else
+    (when-let ((d (vc-git--run-command-string nil "show" "-s" "--format=%as")))
+    (string-trim d))))
 
 (defun org-history--vc-add-file (file &optional backend)
-  "Track file.
-Uses `default-derectory'."
+  "Track FILE.
+Uses `default-derectory'.
+Optional argument BACKEND is Git or may be other."
   ;; Clear Emacs VC cache so it realizes Git now exists
   (vc-file-clearprops file)
 
@@ -222,7 +226,7 @@ same string object in memory.  The search is strictly bounded line-by-line
 to prevent layout syntax errors from desynchronizing the line counter."
   (when (and (file-exists-p file)
              default-directory
-             (org-history--vc-git-get-last-commit-date)
+             ;; (org-history--vc-git-get-last-commit-hash file) ; have commits?
              (vc-git-responsible-p default-directory))
     (let ((line-dates (make-hash-table :test 'eql))
           (line-num 1)
@@ -245,67 +249,150 @@ to prevent layout syntax errors from desynchronizing the line counter."
               (forward-line 1)))))
       line-dates)))
 
+;; -=-= function: add record to .dir-locals.el
+;; ----------------------- append-after-save ---------------
+;; [Original Config] ---> Extract 'org-mode entries (File A's rules)
+;;                              |
+;;                              v
+;;                      Add File B's new rule to the list
+;;                              |
+;;                              v
+;; [Strip old org-mode] -> [Insert combined rules] -> [Save file]
+;;
+;; Result .dir-locals.el example:
+;; ((org-mode
+;;   (eval when
+;;         (and (fboundp 'org-history-mode) buffer-file-name
+;;              (file-equal-p buffer-file-name
+;;                            (expand-file-name "c.org" default-directory)))
+;;         (org-history-mode 1))
+;;   (eval when
+;;         (and (fboundp 'org-history-mode) buffer-file-name
+;;              (file-equal-p buffer-file-name
+;;                            (expand-file-name "b.org" default-directory)))
+;;         (org-history-mode 1))
+
+(defun org-history--dir-locals-p (&optional rel-file-name config)
+  "Check if CONFIG (parsed .dir-locals) contains an `org-mode` rule for REL-FILE-NAME.
+Use `default-directory' and `buffer-file-name' for config reading if
+ CONFIG is not provided."
+  (org-history--debug "org-history--dir-locals-p N1 %s" rel-file-name)
+  (org-history--debug "org-history--dir-locals-p N1" config)
+  (let* ((rel-file-name (or rel-file-name (file-relative-name buffer-file-name default-directory)))
+         (config (or config (when (file-exists-p ".dir-locals.el")
+                              (with-temp-buffer
+                                (insert-file-contents ".dir-locals.el")
+                                (ignore-errors (read (current-buffer)))))))
+         (org-entries (cdr (assoc 'org-mode config)))) ; return nil if config is nil
+    (when org-entries
+      (catch 'found
+        (dolist (entry org-entries nil) ; returns nil if loop finishes naturally
+          (when (and (eq (car-safe entry) 'eval)
+                     (string-match-p (regexp-quote rel-file-name) (format "%S" entry)))
+            (throw 'found t)))))))
+
+
+(defun org-history-dir-locals-append ()
+  "Add an `org-history-mode' activation to TARGET-DIR/.dir-locals.el.
+Uses `buffer-file-name' and `default-directory' variables.
+Safely merges with existing mode settings without overwriting rules for
+ other files."
+  (interactive "DSelect directory for .dir-locals.el: ")
+  (unless buffer-file-name
+    (user-error "org-history: Current buffer is not visiting a file"))
+  (unless default-directory
+    (user-error "org-history: No default-directory"))
+
+  (let* ((file-path (expand-file-name ".dir-locals.el" default-directory))
+         (rel-file-name (file-relative-name buffer-file-name default-directory))
+         ;; 1. Read existing config ONCE safely
+         (config (when (file-exists-p file-path)
+                   (with-temp-buffer
+                     (insert-file-contents file-path)
+                     (ignore-errors (read (current-buffer))))))
+         ;; 2. Generate the new rule
+         (new-rule `(eval . (when (and (fboundp 'org-history-mode)
+                                       buffer-file-name
+                                       (file-equal-p buffer-file-name
+                                                     (expand-file-name ,rel-file-name default-directory)))
+                              (org-history-mode 1)))))
+
+    (if (org-history--dir-locals-p rel-file-name config)
+        (message ".dir-locals.el is already configured for %s" rel-file-name)
+      ;; 3. Destructive-safe update of the alist using built-in alist-get
+      (let ((org-entries (cdr (assoc 'org-mode config))))
+        (setf (alist-get 'org-mode config) (cons new-rule org-entries)))
+
+      ;; 4. Pretty-print back to file
+      (with-temp-file file-path
+        (let (print-level print-length)
+          (pp config (current-buffer))))
+      (message "Successfully synchronized .dir-locals.el for %s" rel-file-name))
+    file-path))
+
 ;; -=-= functions: init .git
 
 (defun org-history-git-init (&optional first-file)
   "Execute the custom Git initialization commands sequentially.
 Optional argument FIRST-FILE is used for the first file to init git
- repostiry if .gitignore is already exist, otherwise .elpaignore is
- used.  FIRST-FILE should be a name of file in `default-directory'.
+ repostiry or .gitignore if not exist or .dir-locals.el
+FIRST-FILE should be a name of file in `default-directory'.
+Create .gitignore and .dir-locals.el.
 Warning, `vc-root-dir' will return nil until first commit will be made.
+Safe to call with existing .git.
 Use `default-directory'."
   (interactive)
-  ;;  Step 0 : clear vc catch
-  (org-history--vc-reset-cache)
-  (when first-file
-    (org-history--vc-reset-cache first-file))
+  (let ((vc-handled-backends '(Git)))
+    ;;  Step 0 : clear vc catch
+    (org-history--vc-reset-cache)
+    (when first-file
+      (org-history--vc-reset-cache first-file))
     ;; Step 1: Create the .gitignore file safely
-  ;; (we need at leas one file init initialize)
-  (let ((first-f (expand-file-name
-                  (if (not (file-exists-p ".gitignore"))
-                      ".gitignore"
-                    ;; else
+    ;; (we need at leas one file to init initialize)
+    (let ((first-f (expand-file-name
                     (if (and first-file (file-exists-p first-file))
                         first-file
                       ;; else
-                      ;; (if (not (file-exists-p ".dir-locals.el"))
-                      ".dir-locals.el"
+                      (if (not (file-exists-p ".gitignore"))
+                          ".gitignore"
+                        ;; else
+                        ".dir-locals.el"
                         ;; else
                         ;; (user-error "Cant init git in for org-history: .gitignore and .elpaignore is exist")
                         ))
-                  default-directory))
-        (dir-locals (org-history--append-after-save-to-dir-locals default-directory)))
+                    default-directory)))
+      ;; Create  .dir-locals.el
+      (org-history-dir-locals-append)
 
-    ;; Create  .gitignore
-    (when (not (file-exists-p ".gitignore"))
-      (with-temp-file  ".gitignore"
-        (insert (mapconcat 'identity gitignore-content "\n") "\n")
-        ;; (save-buffer
-        (write-file ".gitignore")
-        (basic-save-buffer)))
+      ;; Create  .gitignore
+      (when (not (file-exists-p ".gitignore"))
+        (with-temp-file  ".gitignore"
+          (insert (mapconcat 'identity gitignore-content "\n") "\n")
+          ;; (save-buffer
+          (write-file ".gitignore")
+          (basic-save-buffer)))
 
-    ;; Step 1: Initialize the Git repository
-    (dolist (args org-history-git-init-commands)
-      ;; 'apply' lets us unpack the 'args' list directly into the function call
-      (apply #'vc-git-command nil 0 nil args))
+      ;; Step 1: Initialize the Git repository
+      (dolist (args org-history-git-init-commands)
+        ;; 'apply' lets us unpack the 'args' list directly into the function call
+        (apply #'vc-git-command nil 0 nil args))
 
-    (message "Initialized Git repository...")
+      (message "Initialized Git repository...")
 
-    ;; Step 3: add first file to finish initialization
-    (org-history--vc-add-file first-f 'Git)
+      ;; Step 3: add first file to finish initialization
+      (org-history--vc-add-file first-f 'Git)
 
-    ;; ;; Refresh the state to update vc-state immediately
-    ;; (vc-refresh-state)
-    ;; (org-history--debug "org-history-git-init" (org-history--vc-git-status))
-    ;; (vc-responsible-backend default-directory) ; fix vc-root-dir to return without first commit
-    ;; (print (vc-root-dir))
-    (setq org-history-track-file 'track-file)
+      ;; ;; Refresh the state to update vc-state immediately
+      ;; (vc-refresh-state)
+      ;; (org-history--debug "org-history-git-init" (org-history--vc-git-status))
+      ;; (vc-responsible-backend default-directory) ; fix vc-root-dir to return without first commit
+      (setq org-history-answer-was-given 'track-file)
 
-    ;; Commit is not required, add is enough
-    (message "Registered .gitignore and %s with Git!" default-directory)))
+      ;; Commit is not required, add is enough
+      (message "Git initialized %s with file %s!" default-directory (file-relative-name first-f)))))
 
 
-;; -=-= functions: check-hook-scope
+;; -=-= functions: check-hook-scope (OLD)
 
 (defun org-history--check-hook-scope (hook func)
   "Check if FUNC is bound to HOOK as :global, :local, :both, or nil."
@@ -319,438 +406,165 @@ Use `default-directory'."
         ((memq func (default-value hook))
          :global)))
 
-;; -=-= function: add record to .dir-locals.el
-
-;; (defun org-history--append-after-save-to-dir-locals (target-dir)
-;;   "Safely add or merge the local after-save-hook into TARGET-DIR/.dir-locals.el.
-;; Add: function to `after-save-hook' and enable `org-history-track-file'.
-;; Return .dir-locals.el path."
-;;   (interactive "DSelect directory for .dir-locals.el: ")
-;;   (let* ((file-path (expand-file-name ".dir-locals.el" (or target-dir default-directory)))
-;;          ;; Your existing hook injection rule
-;;          (new-rule '(eval . (if (fboundp 'org-history-hook-for-after-save)
-;;                                 (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-;;                               (lwarn 'org-history :warning "`org-history` is not available; auto-commit on save disabled."))))
-;;          ;; NEW: The variable tracking rule
-;;          (track-rule '(org-history-track-file . track-file))
-;;          ;; 1. Read file if it exists, otherwise start with a clean nil list
-;;          (config (and (file-exists-p file-path)
-;;                       (with-temp-buffer
-;;                         (insert-file-contents file-path)
-;;                         (ignore-errors (read (current-buffer)))))))
-
-;;     ;; 2. Seamlessly update or create the 'org-mode section
-;;     ;; Inject the eval rule if missing
-;;     (unless (member new-rule (cdr (assoc 'org-mode config)))
-;;       (setf (alist-get 'org-mode config) (cons new-rule (cdr (assoc 'org-mode config)))))
-
-;;     ;; NEW: Inject the org-history-track-file rule if missing
-;;     (unless (member track-rule (cdr (assoc 'org-mode config)))
-;;       (setf (alist-get 'org-mode config) (cons track-rule (cdr (assoc 'org-mode config)))))
-
-;;     ;; 3. Write it back out cleanly
-;;     (with-temp-file file-path
-;;       (let (print-level print-length)
-;;         (pp config (current-buffer))))
-;;     (message "Successfully synchronized .dir-locals.el")
-;;     file-path))
-
-;; (defun org-history--append-after-save-to-dir-locals (target-dir)
-;;   "Safely add or merge the local after-save-hook into TARGET-DIR/.dir-locals.el.
-;; Add: function to `after-save-hook' globally for org-mode, but enable
-;; `org-history-track-file' only for the current `buffer-file-name'.
-;; Return .dir-locals.el path."
-;;   (interactive "DSelect directory for .dir-locals.el: ")
-;;   (unless buffer-file-name
-;;     (user-error "Current buffer is not visiting a file"))
-
-;;   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
-;;          (file-path (expand-file-name ".dir-locals.el" target-dir))
-;;          ;; 1. Calculate the relative file name for the current buffer
-;;          (rel-file-name (file-relative-name buffer-file-name target-dir))
-
-;;          ;; Your existing hook injection rule for all org-mode files
-;;          (new-rule '(eval . (if (fboundp 'org-history-hook-for-after-save)
-;;                                 (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-;;                               (lwarn 'org-history :warning "`org-history` is not available; auto-commit on save disabled."))))
-;;          ;; The variable tracking rule applied only to this specific file
-;;          (track-rule '(org-history-track-file . track-file))
-
-;;          ;; Read file if it exists, otherwise start with a clean nil list
-;;          (config (and (file-exists-p file-path)
-;;                       (with-temp-buffer
-;;                         (insert-file-contents file-path)
-;;                         (ignore-errors (read (current-buffer)))))))
-
-;;     ;; 2. Update the general 'org-mode section for the hook
-;;     (unless (member new-rule (cdr (assoc 'org-mode config)))
-;;       (setf (alist-get 'org-mode config) (cons new-rule (cdr (assoc 'org-mode config)))))
-
-;;     ;; 3. Update the file-specific section for tracking
-;;     ;; In .dir-locals.el, string keys represent specific sub-paths/files
-;;     (unless (member track-rule (cdr (assoc rel-file-name config)))
-;;       (setf (alist-get rel-file-name config nil nil #'equal)
-;;             (cons track-rule (cdr (assoc rel-file-name config #'equal)))))
-
-;;     ;; 4. Write it back out cleanly
-;;     (with-temp-file file-path
-;;       (let (print-level print-length)
-;;         (pp config (current-buffer))))
-;;     (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
-;;     file-path))
-
-;; (defun org-history--append-after-save-to-dir-locals (target-dir)
-;;   "Safely add or merge a file-specific activation rule into TARGET-DIR/.dir-locals.el.
-;; This activates `org-history-mode' (or your specific minor mode) ONLY when
-;; the current file is opened.
-;; Return .dir-locals.el path."
-;;   (interactive "DSelect directory for .dir-locals.el: ")
-;;   (unless buffer-file-name
-;;     (user-error "Current buffer is not visiting a file"))
-
-;;   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
-;;          (file-path (expand-file-name ".dir-locals.el" target-dir))
-;;          ;; Calculate the relative file name for the current buffer
-;;          (rel-file-name (file-relative-name buffer-file-name target-dir))
-
-;;          ;; THE SINGLE RULE: If the minor mode function exists, turn it on
-;;          (mode-activation-rule '(eval . (when (fboundp 'org-history-mode)
-;;                                           (org-history-mode 1))))
-
-;;          ;; Read file if it exists, otherwise start with a clean nil list
-;;          (config (and (file-exists-p file-path)
-;;                       (with-temp-buffer
-;;                         (insert-file-contents file-path)
-;;                         (ignore-errors (read (current-buffer)))))))
-
-;;     ;; Update the file-specific section with our single evaluation rule
-;;     (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
-;;       (setf (alist-get rel-file-name config nil nil #'equal)
-;;             (cons mode-activation-rule (cdr (assoc rel-file-name config #'equal)))))
-
-;;     ;; Write it back out cleanly
-;;     (with-temp-file file-path
-;;       (let (print-level print-length)
-;;         (pp config (current-buffer))))
-;;     (message "Successfully configured .dir-locals.el to activate org-history for %s" rel-file-name)
-;;     file-path))
-
-;; (defun org-history--append-after-save-to-dir-locals (target-dir)
-;;   "Safely add or merge a file-specific activation rule into TARGET-DIR/.dir-locals.el.
-;; This activates `org-history-mode' (or your specific minor mode) ONLY when
-;; the current file is opened.
-;; Return .dir-locals.el path."
-;;   (interactive "DSelect directory for .dir-locals.el: ")
-;;   (unless buffer-file-name
-;;     (user-error "Current buffer is not visiting a file"))
-
-;;   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
-;;          (file-path (expand-file-name ".dir-locals.el" target-dir))
-;;          ;; Calculate the relative file name for the current buffer
-;;          (rel-file-name (file-relative-name buffer-file-name target-dir))
-
-;;          ;; THE SINGLE RULE: If the minor mode function exists, turn it on
-;;          (mode-activation-rule '(eval . (if (fboundp 'org-history-mode)
-;;                                           (org-history-mode 1))))
-
-;;          ;; Read file if it exists, otherwise start with a clean nil list
-;;          (config (and (file-exists-p file-path)
-;;                       (with-temp-buffer
-;;                         (insert-file-contents file-path)
-;;                         (ignore-errors (read (current-buffer)))))))
-
-;;     ;; Update the file-specific section with our single evaluation rule
-;;     (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
-;;       (setf (alist-get rel-file-name config nil nil #'equal)
-;;             (cons mode-activation-rule (cdr (assoc rel-file-name config #'equal)))))
-
-;;     ;; (unless (member mode-activation-rule (cdr (assoc rel-file-name config #'equal)))
-;;     ;;   (setf (alist-get rel-file-name config)
-;;     ;;         (cons mode-activation-rule (cdr (assoc rel-file-name config)))))
-
-;;     ;; Write it back out cleanly
-;;     (with-temp-file file-path
-;;       (let (print-level print-length)
-;;         (pp config (current-buffer))))
-;;     (message "Successfully configured .dir-locals.el to activate org-history for %s" rel-file-name)
-;;     file-path))
-
-;; (defun org-history--append-after-save-to-dir-locals (target-dir)
-;;   "Safely add or merge the local after-save-hook into TARGET-DIR/.dir-locals.el.
-;; Add: function to `after-save-hook' globally for org-mode, but enable
-;; `org-history-track-file' only for the current `buffer-file-name' relative
-;; to the project directory.
-;; Return .dir-locals.el path."
-;;   (interactive "DSelect directory for .dir-locals.el: ")
-;;   (unless buffer-file-name
-;;     (user-error "Current buffer is not visiting a file"))
-;;   (let* ((target-dir (expand-file-name (or target-dir default-directory)))
-;;          (file-path (expand-file-name ".dir-locals.el" target-dir))
-;;          ;; 1. Calculate the relative file name at configuration time
-;;          (rel-file-name (file-relative-name buffer-file-name target-dir))
-
-;;          ;; FIXED: Calculate the relative name of the buffer dynamically at runtime
-;;          ;; against `default-directory` (which points to the .dir-locals.el location)
-;;          (new-rule `(eval . (when (and (fboundp 'org-history-mode)
-;;                                        buffer-file-name
-;;                                        (string-equal (file-relative-name buffer-file-name default-directory)
-;;                                                      ,rel-file-name))
-;;                               (org-history-mode 1))))
-
-;;          ;; Read file if it exists, otherwise start with a clean nil list
-;;          (config (and (file-exists-p file-path)
-;;                       (with-temp-buffer
-;;                         (insert-file-contents file-path)
-;;                         (ignore-errors (read (current-buffer)))))))
-
-;;     ;; 2. Update the general 'org-mode section for the hook
-;;     (unless (member new-rule (cdr (assoc 'org-mode config)))
-;;       (setf (alist-get 'org-mode config) (cons new-rule (cdr (assoc 'org-mode config)))))
-
-;;     ;; 4. Write it back out cleanly
-;;     (with-temp-file file-path
-;;       (let (print-level print-length)
-;;         (pp config (current-buffer))))
-;;     (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
-;;     file-path))
-
-;; ----------------------- append-after-save ---------------
-;; [Original Config] ---> Extract 'org-mode entries (File A's rules)
-;;                              |
-;;                              v
-;;                      Add File B's new rule to the list
-;;                              |
-;;                              v
-;; [Strip old org-mode] -> [Insert combined rules] -> [Save file]
-;;
-;; Accuratelly add current file:
-;; ((org-mode
-;;   (eval . (when (and (fboundp 'org-history-mode) buffer-file-name (file-equal-p buffer-file-name (expand-file-name "todo.org" default-directory))) (org-history-mode 1)))
-;;   (eval . (when (and (fboundp 'org-history-mode) buffer-file-name (file-equal-p buffer-file-name (expand-file-name "notes.org" default-directory))) (org-history-mode 1)))))
-
-(defun org-history--append-after-save-to-dir-locals (target-dir)
-  "Add an `org-history-mode` rule to TARGET-DIR/.dir-locals.el for the current file.
-Safely merges with existing mode settings without overwriting rules for other files."
-  (interactive "DSelect directory for .dir-locals.el: ")
-  (unless buffer-file-name
-    (user-error "Current buffer is not visiting a file"))
-
-  (let* ((target-dir (expand-file-name (or target-dir default-directory)))
-         (file-path (expand-file-name ".dir-locals.el" target-dir))
-         (rel-file-name (file-relative-name buffer-file-name target-dir))
-
-         ;; The eval rule sequence to enforce
-         (new-rule `(eval . (when (and (fboundp 'org-history-mode)
-                                       buffer-file-name
-                                       (file-equal-p buffer-file-name
-                                                     (expand-file-name ,rel-file-name default-directory)))
-                              (org-history-mode 1))))
-
-         ;; Read existing config safely
-         (config (when (file-exists-p file-path)
-                   (with-temp-buffer
-                     (insert-file-contents file-path)
-                     (condition-case nil
-                         (let ((data (read (current-buffer))))
-                           (when (listp data) data))
-                       (error nil)))))
-
-         ;; Extract existing org-mode rules
-         (org-entries (cdr (assoc 'org-mode config)))
-         (already-exists nil))
-
-    ;; PHASE 2: Semantic Check (Look for this specific file's rule)
-    (dolist (entry org-entries)
-      (when (and (eq (car-safe entry) 'eval)
-                 (string-match-p (regexp-quote (format "%S" rel-file-name))
-                                 (format "%S" entry)))
-        (setq already-exists t)))
-
-    ;; PHASE 3: Non-destructive Merge & Write-back
-    (if already-exists
-        (message ".dir-locals.el is already configured for %s" rel-file-name)
-
-      (progn
-        ;; 1. Add our new rule to the front of the existing org-mode rules
-        (setq org-entries (cons new-rule org-entries))
-
-        ;; 2. Strip the old 'org-mode block out of the global config entirely
-        (setq config (assq-delete-all 'org-mode config))
-
-        ;; 3. Re-insert the freshly updated 'org-mode block back into config
-        (push (cons 'org-mode org-entries) config)
-
-        ;; PHASE 4: Write back neatly formatted data
-        (with-temp-file file-path
-          (let (print-level print-length)
-            (pp config (current-buffer))))
-        (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)))
-
-    file-path))
-
 ;; -=-= hook: after-save
 
+(defun org-history--git-get-last-commit-message (&optional file)
+  "Get the last Git commit message globally, or for a specific FILE if provided.
+Returns the trimmed message string, or nil if an error occurs (e.g., no commits exist)."
+  (when (or (not file) (and file (file-exists-p file)))
+    ;; The first element here must be the command string "log", NOT nil.
+    (let ((args (if file
+                    (list "log" "-1" "--pretty=%B" "--" (file-relative-name file))
+                  (list "log" "-1" "--pretty=%B"))))
+      (with-demoted-errors "org-history (git log error): %S"
+        (when-let ((output (apply #'vc-git--run-command-string nil args)))
+          (string-trim output))))))
+
+(defun org-history--commit (last-commit-date)
+  "Execute the commit or amend routines based on the presence of LAST-COMMIT-DATE.
+Uses `buffer-file-name'.
+Assumes tracking confirmation has already been validated and set."
+  (let ((current-date (format-time-string "%Y-%m-%d"))
+        (last-commit-message (when last-commit-date
+                               (org-history--git-get-last-commit-message))))
+    (if (and last-commit-date
+             (string-equal last-commit-date current-date)
+             (string-prefix-p "org-history" last-commit-message))
+
+        ;; Sub-Case A: Amend day's existing transaction
+        (progn
+          (org-history--vc-add-file buffer-file-name 'Git)
+          (vc-git-command nil 0 nil "commit" "--amend" "--allow-empty" "--no-edit" "--date=now")
+          (message "VC-Git: Amended existing commit for today."))
+
+      ;; Stage file changes and commit
+      (org-history--vc-add-file buffer-file-name 'Git)
+      (vc-git-command nil 0 nil "commit" "-m" "org-history")
+      (message "VC-Git: Created new empty-message commit."))))
+
+
 (defun org-history-hook-for-after-save ()
-  "Automatically commit or amend in Git after saving a buffer.
-Intended for `after-save-hook'.
+  (when (and (not (eq org-history-answer-was-given 'dont-track-file))
+             buffer-file-name
+             default-directory)
+    (let ((git-root (vc-git-root buffer-file-name))
+          (is-file-tracked (eq 'Git (vc-backend buffer-file-name)))
+          (current-date (format-time-string "%Y-%m-%d")))
+      (let ((default-directory (or git-root
+                                   default-directory)))
 
-If there is no .git or no commits or previous commit was not starting
- with \"org-history\" string, we ask user to confirm to commit and
- remember choice in current buffer in `org-history-track-file' variable.
-We ue `y-or-n-p' to ask user at init repo and at new commit it
- `org-history-track-file' was not set.
-"
-  (org-history--debug "org-history-hook-for-after-save N1")
-  (when-let ((dir (when buffer-file-name (file-name-directory buffer-file-name))) ; root of current file ; if buffer visiting a file
-             ;; if hook-placed is local we
-             (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save)))
-    (org-history--debug "org-history-hook-for-after-save N2")
-    ;; Check if we configured correctly for current directory or local buffer
-    (when (or (eq hook-placed :local)
-              (eq hook-placed :both)
-              (and (eq hook-placed :global)
-                   (catch 'found
-                     (dolist (path org-history-directories)
-                       (when (file-equal-p dir path)
-                         (throw 'found t)))
-                     nil)))
-      (org-history--debug "org-history-hook-for-after-save N3" default-directory (vc-git-root buffer-file-name) buffer-file-name)
-      (org-history--vc-reset-cache)
-      (org-history--vc-reset-cache buffer-file-name)
+        ;; (y-or-n-p (format "org-history: add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
+        (vc-file-clearprops buffer-file-name)
+        (let ((last-commit-date-file
+               (when is-file-tracked (org-history--vc-git-get-last-commit-date buffer-file-name)))
+              (last-commit-message-global
+               (when is-file-tracked (org-history--git-get-last-commit-message)))
+              (rel-file-name (file-relative-name buffer-file-name default-directory)))
 
+          ;; Clean up VC internal property cache to ensure fresh Git statuses
+          ;; (vc-file-clearprops buffer-file-name)
 
-      (let ((backend (vc-backend buffer-file-name))
-            ;; works for not added files too:
-            (default-directory (vc-git-root buffer-file-name)))  ; root of .git or nil to check if .git exist.
+          ;; cases:
+          ;; - Case 1: No Git repository exists at all
+          ;; - Case 2: Git repo exists + same day + org-history prefix -> Transparently Amend (No prompt)
+          ;; - Case 3: Git repo exists, but requires a new commit or initial tracking approval
+          (org-history--debug "org-history-hook-for-after-save N1 git-root=%s is-file-tracked=%s current-date=%s" git-root is-file-tracked current-date)
+          (org-history--debug "org-history-hook-for-after-save N1 default-directory=%s last-commit-date-file=%s last-commit-message-global=%s" default-directory last-commit-date-file last-commit-message-global)
 
-
-        ;; Safety check: Ensure the buffer is visiting a file and it's backed by Git
-        ;; when file is not registered and not bound to other VCS
-        ;; when
-        (when (and (or (not backend) (eq backend 'Git))
-
-                   ;; 1. Check if the directory is NOT in Git, and ask the user to initialize it
-                   ;; (print (list is-git backend  default-directory))
-                   (not default-directory))
-          (if (y-or-n-p (format "org-history: Do git init in %s? " dir))
-              (progn
-                (setq default-directory dir) ; restore
-                (vc-file-clearprops buffer-file-name)
-                ;; Initialize the repository synchronously
-                (org-history-git-init (file-relative-name buffer-file-name)) ; Uses default-directory, set org-history-track-file to 'track-this-file
-
-                ;; Update our state flag since it's now a Git repo
-                (setq backend 'Git)
-
-                (message "Initialized empty Git repository in %s" dir))
-            ;; else If user says no, we display a silent message and do nothing
-            (message "Skipped Git auto-commit (Directory is not a Git repository).")))
-
-        (org-history--debug "org-history-hook-for-after-save N32" default-directory backend)
-        (when default-directory ; if default-directory is not nil, it is 'Git
-          (org-history--debug "org-history-hook-for-after-save N4 %s" default-directory buffer-file-name (vc-backend buffer-file-name))
-          ;; (rev (vc-working-revision nil backend)) ; working or last revision
-          (let* (;; "Get the YYYY-MM-DD author date for a specific REV hash of FILE."
-                 (last-commit-date (org-history--vc-git-get-last-commit-date))
-                 (last-commit-message (when last-commit-date
-                                        (string-trim (vc-git--run-command-string nil "log" "-1" "--pretty=%B"))))
-                 ;; (last-commit-date   (let ((default-directory dir)) ; required?
-                 ;;                       (with-temp-buffer
-                 ;;                         ;; 't' makes this synchronous so the buffer fills before we read it
-                 ;;                         (vc-git-command (current-buffer) 0 nil
-                 ;;                                         "show" "-s" "--format=%as" rev)
-                 ;;                         (string-trim (buffer-string)))))
-
-                 ;; Fetch the current system date (dynamically testable via mocking)
-                 (current-date (format-time-string "%Y-%m-%d")))
-
-            ;; Stage the saved file
-            ;; (vc-git-command nil 0 file-relative "add")
-
-
-            ;; "Commit": with --amend (same date) or without (new day, no previous)
-            ;; (print (list rev last-commit-date current-date))
-            (if (and last-commit-date
-                     (string-equal last-commit-date current-date)
-                     (string-prefix-p "org-history" last-commit-message))
-                ;; Case 1: Same day -> Amend without altering the commit message
+          ;; --- CASES ---
+          (cond
+           ;; Case 1: No Git repository exists at all
+           ((not git-root)
+            (org-history--debug "org-history-hook-for-after-save Case1")
+            (if (y-or-n-p (format "org-history: Do git init and activate auto-commit for this file in\n%s? " default-directory))
                 (progn
-                  (org-history--debug "org-history-hook-for-after-save N5")
-                  (org-history--vc-add-file buffer-file-name 'Git)
-                  (vc-git-command nil 0 nil "commit" "--amend" "--no-edit" "--date=now")
-                  (setq org-history-track-file 'track-file) ; dont ask next time if user made custom commit.
-                  (message "VC-Git: Amended existing commit for today."))
+                  (org-history-git-init rel-file-name) ; add .dir-locals.el
+                  (org-history-outline--add-dates)
+                  (setq org-history-answer-was-given 'track-file))
+              (setq org-history-answer-was-given 'dont-track-file)))
 
-              ;; else: Case 2: New day OR fresh repo -> Create a new commit with an empty message
-              ;; Initilize .git if it have no commits.
-              (when (eq org-history-track-file nil)
-                (if (if last-commit-date
-                          (y-or-n-p (format "org-history: enable auto-commit on save this? " (file-relative-name buffer-file-name)))
-                        ;; else
-                        (y-or-n-p (format "org-history: Do git init in %s? " dir)))
-                  (setq org-history-track-file 'track-file)
-                  ;; else
-                  (setq org-history-track-file 'dont-track-file)))
+           ;; Case 2: Git repo exists + same day + org-history prefix -> Transparently Amend (No prompt)
+           ((and last-commit-date-file
+                 (string-equal last-commit-date-file current-date)
+                 (string-prefix-p "org-history" last-commit-message-global))
+            (org-history--debug "org-history-hook-for-after-save Case2 %s"  (org-history--dir-locals-p rel-file-name)  (not org-history-answer-was-given))
+            ;; 1. Ensure we have a tracking decision if we don't already
+            (when (and (not (org-history--dir-locals-p rel-file-name)) ; dir-locals
+                       (not org-history-answer-was-given))
+              (let ((prompt (format "org-history: track this file and add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
+                (setq org-history-answer-was-given (if (y-or-n-p prompt) 'track-file 'dont-track-file)))
+              ;; 2. Create  .dir-locals.el
+              (when (eq org-history-answer-was-given 'track-file)
+                (org-history-dir-locals-append)))
+            ;; unconditionally
+            (org-history--commit last-commit-date-file))
 
-              (when (eq org-history-track-file 'track-file)
-                ;; initialize .git if it have no commits
-                (unless last-commit-date ; is nil, no commits at all, git probably is not initialized
-                  (dolist (args org-history-git-init-commands)
-                    (apply #'vc-git-command nil 0 nil args))) ; 'apply' lets us unpack the 'args' list directly into the function call
+           ;; Case 3: Git repo exists, but requires a new commit or initial tracking approval
+           (t
+            (org-history--debug "org-history-hook-for-after-save Case3")
+            (let ((dir-locals (org-history--dir-locals-p rel-file-name)))
+              ;; 1. Ensure we have a clear tracking decision
+              (unless (and org-history-answer-was-given dir-locals)
+                (let ((prompt-msg (format "org-history: enable auto-commit on save this file and in\n%s? "
+                                          (expand-file-name ".dir-locals.el" default-directory))))
+                  (setq org-history-answer-was-given
+                        (if (y-or-n-p prompt-msg) 'track-file 'dont-track-file))))
 
-                (org-history--debug "org-history-hook-for-after-save N6")
-                (org-history--vc-add-file buffer-file-name 'Git)
-                (vc-git-command nil 0 nil "commit" "--allow-empty-message" "-m" "org-history")
-                (org-history--debug "org-history-hook-for-after-save N7" (shell-command-to-string "git rev-list --count HEAD") last-commit-date current-date)
+              ;; 2. Execute tracking logic if allowed
+              (when (eq org-history-answer-was-given 'track-file)
+                ;; Ensure Git repo is initialized with baseline settings if empty
+                (unless (vc-git--run-command-string nil "log" "-1")
+                  (let ((inhibit-message t)) ; Keep the echo area clean during init loop
+                    (dolist (args org-history-git-init-commands)
+                      (apply #'vc-git-command nil 0 nil args))))
 
-                ;; (vc-checkin (list file) backend comment)
-                (message "VC-Git: Created new empty-message commit.")
-                ;; end of "Commit"
-                ))
+                ;; Create  .dir-locals.el
+                (when (not dir-locals)
+                  (org-history-dir-locals-append))
 
-            ;; Performance Sync: Clear VC internal properties so the UI/modeline updates immediately
-            (vc-file-clearprops buffer-file-name)))))))
+                (org-history--commit last-commit-date-file)
+                (unless last-commit-date-file
+                  (org-history-outline--add-dates))))))
 
-;; Register the hook globally to trigger upon buffer saves
-;; (add-hook 'after-save-hook #'org-history-hook-for-after-save)
-;; (remove-hook 'after-save-hook #'org-history-hook-for-after-save)
+          ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
+          (vc-file-clearprops buffer-file-name))))))
 
 ;; -=-= function: headers folding
-
-(defun org-history--at-unfold-add-date (orig-fun &rest args)
-  "Triggered after org-cycle. Checks if user interactively unfolded a heading.
+(defun org-history--show-dates-at-unfold (orig-fun &rest args)
+  "Add dates for subheaders at unfolding.
+Checks if user interactively unfolded a heading.
+Triggered after 'org-cycle'.
 Reliably check for interactive execution using :around advice."
   ;; 1. Check interactivity FIRST while org-cycle is at the top of the stack
-  (let ((interactive-call (called-interactively-p 'any))
-        (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save)))
+  (let ((interactive-call (called-interactively-p 'any)))
+        ;; (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save))) ; old
 
     ;; 2. Run the original org-cycle command so the heading actually changes state
     (apply orig-fun args)
 
     ;; 3. Now perform your post-execution visibility checks safely
-  (when (and interactive-call			; 1. Only run if called interactively
+  (when (and (bound-and-true-p org-history-mode)
+             interactive-call			; 1. Only run if called interactively
              (org-at-heading-p)		; 2. Only run if cursor is on a heading
              (not (save-excursion		; 3. Ensure heading is currently open
                     (end-of-line)
-                    (org-fold-folded-p nil 'outline))) ; 'headline ?
-             (or (eq hook-placed :local)
-                 (eq hook-placed :both)
-                 (and (eq hook-placed :global)
-                      (catch 'found
-                        (dolist (path org-history-directories)
-                          (when (file-equal-p dir path)
-                            (throw 'found t)))
-                        nil))))
-    (let ((start (save-excursion (forward-line 1) (point)))
-          (end (save-excursion (org-end-of-subtree t t) (point))))
-      (org-history-outline--add-dates start end))
-    ;; (message "Interactively unfolded heading!")
-    )))
+                    (org-fold-folded-p nil 'outline)))) ; 'headline ?
+    (let ((vc-handled-backends '(Git)))
+      ;; (when (org-history--vc-git-get-last-commit-hash buffer-file-name) ; are there commits?
+        (let ((start (save-excursion (forward-line 1) (point)))
+              (end (save-excursion (org-end-of-subtree t t) (point))))
+          (org-history-outline--add-dates start end))
+        ;; (message "Interactively unfolded heading!")
+        ))))
 
-;; Attach as an ':after' advice to org-cycle
+(defun org-history--cycle-hook (state)
+  "Triggered by `org-shifttab' from `org-cycle-internal-global' after cycling.
+STATE may be `overview', `contents', or `all'."
+  (when (eq state 'contents)
+    (let ((vc-handled-backends '(Git)))
+      (org-history-outline--add-dates (point-min) (point-max)))))
 
 ;; -=-= minor mode
-
 (define-minor-mode org-history-mode
   "Minor mode for `org-mode' to showing date of last modified per outlier."
   :init-value nil
@@ -760,69 +574,42 @@ Reliably check for interactive execution using :around advice."
     (user-error "org-history minor mode failed to activate in buffer %s, not Org mode" (buffer-name (current-buffer))))
   (if org-history-mode
       (progn
-        (org-history-outline--add-dates)
+        (let ((vc-handled-backends '(Git)))
+          ;; no last commit - ask user to init .git
+          (when (not (org-history--vc-git-get-last-commit-hash)) ; any commits for file?
+            (if (y-or-n-p (format "org-history: Do git init in %s? " default-directory))
+                (progn
+                  (org-history-git-init (file-relative-name buffer-file-name default-directory)) ; (setq org-history-answer-was-given 'track-file))
+                  (org-history--commit nil)) ; add commit
+              ;; else
+              (setq org-history-answer-was-given 'dont-track-file)))
+          (org-history-outline--add-dates))
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-        (advice-add 'org-cycle :around #'org-history--at-unfold-add-date '((local . t))))
+        (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
+        (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t))
     ;; else - off
-    (advice-remove 'org-cycle #'org-history--at-unfold-add-date)
+    (advice-remove 'org-cycle #'org-history--show-dates-at-unfold)
     (remove-hook 'after-save-hook #'org-history-hook-for-after-save t)
+    (remove-hook 'org-cycle-hook #'org-history--cycle-hook t)
     (org-history-outline-clear-all-org-date-overlays)
 
-    (kill-local-variable 'org-history-track-file)
+    (kill-local-variable 'org-history-answer-was-given)
     (message "org-history is disabled.")))
 
-;; Optimization: Only trigger if Emacs VC explicitly sees the file as 'edited
-      ;; (when (eq (vc-state buffer-file-name) 'edited)
+
+;; ;; NOT USED
+;; (defun org-history--check-hook-directories () ; OLD TODO: replace with minor global mode
+;;   (or (eq hook-placed :local)
+;;       (eq hook-placed :both)
+;;       (and (eq hook-placed :global)
+;;            (catch 'found
+;;              (dolist (path org-history-directories)
+;;                (when (file-equal-p dir path)
+;;                  (throw 'found t)))
+;;              nil))))
 
 
-;; (defun org-history-hook-for-after-save ()
-;;   "Automatically commit or amend in Git after saving a buffer.
-;; Utilizes the Emacs VC package for state tracking and handles empty repos smoothly."
-;;   (when (and buffer-file-name
-;;              (eq (vc-backend buffer-file-name) 'Git))
-;;     (let* ((default-directory (file-name-directory buffer-file-name))
-;;            (file-relative (file-relative-name buffer-file-name))
 
-;;            ;; 1. Check if buffer is actually modified before doing heavy Git lifting
-;;            (is-modified (buffer-modified-p))
-
-;;            ;; 2. Verify if HEAD exists safely
-;;            (has-commits (zerop (call-process "git" nil nil nil "rev-parse" "--verify" "HEAD" "2>/dev/null")))
-
-;;            ;; 3. Fetch the last commit date using vc-git-command structure for speed
-;;            (last-commit-date (when has-commits
-;;                                (with-temp-buffer
-;;                                  (vc-git-command (current-buffer) 0 nil "log" "-1" "--format=%as")
-;;                                  (string-trim (buffer-string)))))
-
-;;            (current-date (format-time-string "%Y-%m-%d")))
-
-;;       ;; Execute only if the buffer actually contains new modifications
-;;       (when is-modified
-
-;;         ;; Stage the saved file
-;;         (vc-git-command nil 0 file-relative "add")
-
-;;         ;; Debugging print statement as requested
-;;         (print (list :last-date last-commit-date :current-date current-date))
-
-;;         (if (and has-commits (string-equal last-commit-date current-date))
-;;             ;; Case 1: Same day -> Amend
-;;             (progn
-;;               (vc-git-command nil 0 nil "commit" "--amend" "--no-edit")
-;;               (message "VC-Git: Amended existing commit for today."))
-;;           ;; Case 2: New day OR fresh repo -> New commit
-;;           (progn
-;;             (vc-git-command nil 0 nil "commit" "--allow-empty-message" "-m" "")
-;;             (message "VC-Git: Created new empty-message commit.")))
-
-;;         ;; Sync Emacs VC UI state
-;;         (vc-file-clearprops buffer-file-name)))))
-
-;; ;; Switch to 'before-save-hook' so we capture state BEFORE Emacs flushes
-;; ;; the buffer and resets file status indicators.
-;; (add-hook 'before-save-hook #'org-history-hook-for-after-save)
-;; (remove-hook 'before-save-hook #'org-history-hook-for-after-save)
 ;;; provide
 
 (provide 'org-history)
