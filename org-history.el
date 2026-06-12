@@ -128,7 +128,7 @@ Uses `default-derectory'."
 (defun org-history--vc-git-get-last-commit-hash (&optional file)
   "Return string with the last commit or nil.
 If FILE provided check commits only for file, otherwise any commit.
-Uses buffer-file-name
+Uses variable `buffer-file-name'.
 Note: `vc-git-working-revision' - working with directory,
  'vc-working-revision', not only with file.
 Optional argument BACKEND specifies VC system, e.g., 'git'."
@@ -273,8 +273,11 @@ to prevent layout syntax errors from desynchronizing the line counter."
 ;;         (org-history-mode 1))
 
 (defun org-history--dir-locals-p (&optional rel-file-name config)
-  "Check if CONFIG (parsed .dir-locals) contains an `org-mode` rule for REL-FILE-NAME.
-Use `default-directory' and `buffer-file-name' for config reading if
+  "Check if there is rule for file in .dir-locals.el.
+Files is REL-FILE-NAME or BUFFER-FILE-NAME.
+Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
+ rule for REL-FILE-NAME to activate `org-mistory-mode'.
+Use `default-directory' and variable `buffer-file-name' for config reading if
  CONFIG is not provided."
   (org-history--debug "org-history--dir-locals-p N1 %s" rel-file-name)
   (org-history--debug "org-history--dir-locals-p N1" config)
@@ -294,7 +297,7 @@ Use `default-directory' and `buffer-file-name' for config reading if
 
 (defun org-history-dir-locals-append ()
   "Add an `org-history-mode' activation to TARGET-DIR/.dir-locals.el.
-Uses `buffer-file-name' and `default-directory' variables.
+Uses variable `buffer-file-name' and `default-directory' variables.
 Safely merges with existing mode settings without overwriting rules for
  other files."
   (interactive "DSelect directory for .dir-locals.el: ")
@@ -422,7 +425,7 @@ Returns the trimmed message string, or nil if an error occurs (e.g., no commits 
 
 (defun org-history--commit (last-commit-date)
   "Execute the commit or amend routines based on the presence of LAST-COMMIT-DATE.
-Uses `buffer-file-name'.
+Uses variable `buffer-file-name'.
 Assumes tracking confirmation has already been validated and set."
   (let ((current-date (format-time-string "%Y-%m-%d"))
         (last-commit-message (when last-commit-date
@@ -444,6 +447,13 @@ Assumes tracking confirmation has already been validated and set."
 
 
 (defun org-history-hook-for-after-save ()
+  "Hook for `org-mode' buffers run after saving a file.
+
+When an org file is saved, check Git tracking status and org-history
+ configuration.  Prompts to enable tracking if needed, initializes Git
+ repository if absent, amends or creates Git commits, updates
+ `.dir-locals.el`, and synchronizes version control cache as
+ appropriate."
   (when (and (not (eq org-history-answer-was-given 'dont-track-file))
              buffer-file-name
              default-directory)
@@ -453,7 +463,7 @@ Assumes tracking confirmation has already been validated and set."
       (let ((default-directory (or git-root
                                    default-directory)))
 
-        ;; (y-or-n-p (format "org-history: add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
+        ;; (y-or-n-p (format "org-history: Add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
         (vc-file-clearprops buffer-file-name)
         (let ((last-commit-date-file
                (when is-file-tracked (org-history--vc-git-get-last-commit-date buffer-file-name)))
@@ -534,7 +544,8 @@ Assumes tracking confirmation has already been validated and set."
   "Add dates for subheaders at unfolding.
 Checks if user interactively unfolded a heading.
 Triggered after 'org-cycle'.
-Reliably check for interactive execution using :around advice."
+Reliably check for interactive execution using :around advice.
+Argument ORIG-FUN is `org-cycle' and its ARGS."
   ;; 1. Check interactivity FIRST while org-cycle is at the top of the stack
   (let ((interactive-call (called-interactively-p 'any)))
         ;; (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save))) ; old
@@ -571,7 +582,7 @@ STATE may be `overview', `contents', or `all'."
   ;; :keymap oai-mode-map
   :group 'org-nistory
   (unless (derived-mode-p 'org-mode)
-    (user-error "org-history minor mode failed to activate in buffer %s, not Org mode" (buffer-name (current-buffer))))
+    (user-error "Org-history minor mode failed to activate in buffer %s, not Org mode" (buffer-name (current-buffer))))
   (if org-history-mode
       (progn
         (let ((vc-handled-backends '(Git)))
