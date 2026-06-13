@@ -75,7 +75,6 @@ Automatically deletes older date overlays on the same headline when
          ;; 1. Max out at 0 to avoid future negative date math bugs safely in one line
          (days-old (max 0 (floor (- (float-time) (float-time time-attr)) 86400)))
          ;; 2. Generate smooth vc-annotate aging color wheel
-         ;; (max-days 360)
          (ratio (/ (min days-old org-history-outline-max-days) (float org-history-outline-max-days)))
          (hue (* ratio 0.66)) ; 0.0 = Red, 0.66 = Blue
          (rgb (color-hsl-to-rgb hue 0.8 0.5))
@@ -128,8 +127,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer.
 Warning: `org-history--vc-git-get-last-commit-date' should be checked."
   (interactive)
   (org-history-debug-print "org-history-outline-add-dates %s %s" page-beg page-end)
-  ;; (when (org-history--vc-git-get-last-commit-date) ; or gethash(4 nil) error in `org-history-outline--process-tasks'
-  ;; (when (org-history--vc-git-get-last-commit-hash buffer-file-name) ; have commits?
+  ;; if not checked that commit exist error: gethash(4 nil) error in `org-history-outline--process-tasks'
     (let (tasks)
       (save-excursion
         (goto-char (or page-beg (point-min)))
@@ -150,13 +148,10 @@ Warning: `org-history--vc-git-get-last-commit-date' should be checked."
               ;; Using a marker ensures the position stays accurate even if the buffer shifts
               (push (list (copy-marker heading-pos) real-start real-end) tasks)))
           (outline-next-heading)))
-      ;; (message "Heading markers collected.")
 
       ;; PHASE 2: Process the collected list
       (when tasks
-        (org-history-outline--process-tasks (nreverse tasks) (unless (or page-beg page-end) t))
-        ;; (message "No visible headings found.")
-        )))
+        (org-history-outline--process-tasks (nreverse tasks) (unless (or page-beg page-end) t)))))
 
 ;; -=-= Process-tasks
 (defvar-local org-history-outline--git-blame-cache nil
@@ -223,59 +218,8 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
               (save-excursion
                 (goto-char (marker-position marker))
                 (org-history-outline--outline-attach-date date-str)))
-            (set-marker marker nil)))))
-    ;; (message "Successfully processed %d headings." (length tasks))
-    ))
+            (set-marker marker nil)))))))
 
-;; ;; -=-= timer NOT USED
-;; (defvar org-history-outline--active-timer nil
-;;   "Global reference to the running background outline timer.")
-
-;; (defun org-history-outline--add-dates-stop-timer ()
-;;   "Stop the active org-history outline timer and clean up the reporter."
-;;   (interactive)
-;;   (when org-history-outline--active-timer
-;;     (cancel-timer org-history-outline--active-timer)
-;;     (setq org-history-outline--active-timer nil)
-;;     (message "Org history timer stopped.")))
-
-;; (defun org-history-outline--add-dates-run-in-timer ()
-;;   "Run `org-history-outline-add-dates' every second with a simple reporter."
-;;   (interactive)
-
-;;   ;; 1. Ensure no duplicate timers are running
-;;   (when org-history-outline--active-timer
-;;     (org-history-outline--add-dates-stop-timer))
-
-;;   (let* ((current-buf (current-buffer))
-;;          ;; 2. Initialize a simple non-deterministic progress reporter
-;;          (reporter (make-progress-reporter "Processing Org history visibility...")))
-
-;;     ;; 3. Start the repeating timer
-;;     (setq org-history-outline--active-timer
-;;           (run-with-timer
-;;            1.0 1.0
-;;            (lambda ()
-;;              ;; Guard clause: Stop if the buffer was killed/closed
-;;              (if (not (buffer-live-p current-buf))
-;;                  (progn
-;;                    (progress-reporter-done reporter)
-;;                    (org-history-outline--add-dates-stop-timer))
-
-;;                ;; Update the visual reporter spinner
-;;                (progress-reporter-update reporter)
-
-;;                ;; Execute your process safely inside the target buffer
-;;                (with-current-buffer current-buf
-;;                  (save-excursion
-;;                    (condition-case err
-;;                        (progn
-;;                          (org-history-outline-add-dates)
-;;                          (progress-reporter-done reporter)
-;;                          (org-history-outline--add-dates-stop-timer))
-;;                      (error
-;;                       (message "Timer processing error: %s"
-;;                                (error-message-string err))))))))))))
 
 ;;; provide
 

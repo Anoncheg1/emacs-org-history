@@ -291,14 +291,15 @@ to prevent layout syntax errors from desynchronizing the line counter."
 ;; ((org-mode
 ;;   (eval when
 ;;         (and (fboundp 'org-history-mode) buffer-file-name
-;;              (file-equal-p buffer-file-name
-;;                            (expand-file-name "c.org" default-directory)))
+;;              (file-equal-p (file-name-nondirectory buffer-file-name)
+;;                            "b.org"))
 ;;         (org-history-mode 1))
 ;;   (eval when
 ;;         (and (fboundp 'org-history-mode) buffer-file-name
-;;              (file-equal-p buffer-file-name
-;;                            (expand-file-name "b.org" default-directory)))
-;;         (org-history-mode 1))
+;;              (file-equal-p (file-name-nondirectory buffer-file-name)
+;;                            "a.org"))
+;;         (org-history-mode 1))))
+
 
 (defun org-history--dir-locals-p (&optional rel-file-name config)
   "Check if there is rule for file in .dir-locals.el.
@@ -310,12 +311,7 @@ Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
 Use `default-directory' and variable"
   (org-history-debug-print "org-history--dir-locals-p N1 %s" rel-file-name)
   (org-history-debug-print "org-history--dir-locals-p N1" config)
-  (let* (
-         ;; (rel-file-name (or rel-file-name
-         ;;                    ;; (file-relative-name buffer-file-name default-directory)
-         ;;                    ;; (file-relative-name buffer-file-name (file-name-directory buffer-file-name))
-         ;;                    (file-name-nondirectory buffer-file-name)))
-         (config (or config (when (file-exists-p ".dir-locals.el")
+  (let* ((config (or config (when (file-exists-p ".dir-locals.el")
                               (with-temp-buffer
                                 (insert-file-contents ".dir-locals.el")
                                 (ignore-errors (read (current-buffer)))))))
@@ -348,8 +344,6 @@ Return .dir-locals.el file path if added."
     (user-error "org-history: No default-directory"))
 
   (let* ((file-path (expand-file-name ".dir-locals.el" default-directory))
-         ;; (rel-file-name (file-relative-name buffer-file-name default-directory))
-         ;; (rel-file-name (file-relative-name buffer-file-name (file-name-directory buffer-file-name)))
          (rel-file-name (file-name-nondirectory buffer-file-name))
          ;; 1. Read existing config ONCE safely
          (config (when (file-exists-p file-path)
@@ -466,27 +460,6 @@ Returns the trimmed message string, or nil if an error occurs (e.g., no
         (when-let ((output (apply #'vc-git--run-command-string nil args)))
           (string-trim output))))))
 
-;; (defun org-history--commit (last-commit-date)
-;;   "Execute the commit or amend routines based on the presence of LAST-COMMIT-DATE.
-;; Uses variable `buffer-file-name'.
-;; Assumes tracking confirmation has already been validated and set."
-;;   (let ((current-date (format-time-string "%F")) ; Y-%m-%d
-;;         (last-commit-message (when last-commit-date
-;;                                (org-history--git-get-last-commit-message))))
-;;     (if (and last-commit-date
-;;              (string-equal last-commit-date current-date)
-;;              (string-prefix-p "org-history" last-commit-message))
-
-;;         ;; Sub-Case A: Amend day's existing transaction
-;;         (progn
-;;           (org-history--vc-add-file buffer-file-name 'Git)
-;;           (vc-git-command nil 0 nil "commit" "--amend" "--allow-empty" "--no-edit" "--date=now")
-;;           (message "VC-Git: Amended existing commit for today."))
-
-;;       ;; Stage file changes and commit
-;;       (org-history--vc-add-file buffer-file-name 'Git)
-;;       (vc-git-command nil 0 nil "commit" "-m" "org-history")
-;;       (message "VC-Git: Created new empty-message commit."))))
 
 (defun org-history--commit (&optional last-commit-message)
   "Execute the commit or amend routines based on LAST-COMMIT-MESSAGE.
@@ -510,105 +483,6 @@ Assumes tracking confirmation has already been validated and set."
         (org-history--vc-add-file buffer-file-name 'Git)
         (vc-git-command nil 0 nil "commit" "-m" (format "org-history %s" current-date))
         (message "VC-Git: Created new date-stamped commit.")))))
-
-
-
-;; (defun org-history-hook-for-after-save ()
-;;   "Hook for `org-mode' buffers run after saving a file.
-
-;; When an org file is saved, check Git tracking status and `org-history'
-;;  configuration.  Prompts to enable tracking if needed, initializes Git
-;;  repository if absent, amends or creates Git commits, updates
-;;  `.dir-locals.el`, and synchronizes version control cache as
-;;  appropriate."
-;;   (when (and (not (eq org-history-answer-was-given 'dont-track-file))
-;;              buffer-file-name
-;;              default-directory)
-;;     (let ((git-root (vc-git-root buffer-file-name))
-;;           (is-file-tracked (eq 'Git (vc-backend buffer-file-name)))
-;;           (current-date (format-time-string "%F"))) ; Y-%m-%d
-;;       (let ((default-directory (or git-root
-;;                                    default-directory)))
-
-;;         ;; (y-or-n-p (format "org-history: Add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
-;;         (vc-file-clearprops buffer-file-name)
-;;         (let ((last-commit-date-file
-;;                (when is-file-tracked (org-history--vc-git-get-last-commit-date buffer-file-name)))
-;;               (last-commit-message-global
-;;                (when is-file-tracked (org-history--git-get-last-commit-message)))
-;;               (rel-file-name (file-relative-name buffer-file-name default-directory)))
-
-;;           ;; Clean up VC internal property cache to ensure fresh Git statuses
-;;           ;; (vc-file-clearprops buffer-file-name)
-
-;;           ;; cases:
-;;           ;; - Case 1: No Git repository exists at all
-;;           ;; - Case 2: Git repo exists + same day + org-history prefix -> Transparently Amend (No prompt)
-;;           ;; - Case 3: Git repo exists, but requires a new commit or initial tracking approval
-;;           (org-history-debug-print "org-history-hook-for-after-save N1 git-root=%s is-file-tracked=%s current-date=%s" git-root is-file-tracked current-date)
-;;           (org-history-debug-print "org-history-hook-for-after-save N1 default-directory=%s last-commit-date-file=%s last-commit-message-global=%s" default-directory last-commit-date-file last-commit-message-global)
-
-;;           ;; --- CASES ---
-;;           (cond
-;;            ;; Case 1: No Git repository exists at all
-;;            ((not git-root)
-;;             (org-history-debug-print "org-history-hook-for-after-save Case1")
-;;             (if (y-or-n-p (format "org-history: Do git init and activate auto-commit for this file in\n%s? " default-directory))
-;;                 (progn
-;;                   (org-history-git-init rel-file-name) ; add .dir-locals.el
-;;                   (if org-history-hide-dates
-;;                       (message "org-history: dates was not shown because of org-history-hide-dates variable.")
-;;                        ;; else
-;;                     (org-history-outline-add-dates))
-;;                   (setq org-history-answer-was-given 'track-file))
-;;               (setq org-history-answer-was-given 'dont-track-file)))
-
-;;            ;; Case 2: Git repo exists + same day + org-history prefix -> Transparently Amend (No prompt)
-;;            ((and last-commit-date-file
-;;                  (string-equal last-commit-date-file current-date)
-;;                  (string-prefix-p "org-history" last-commit-message-global))
-;;             (org-history-debug-print "org-history-hook-for-after-save Case2 %s"  (org-history--dir-locals-p rel-file-name)  (not org-history-answer-was-given))
-;;             ;; 1. Ensure we have a tracking decision if we don't already
-;;             (when (and (not (org-history--dir-locals-p rel-file-name)) ; dir-locals
-;;                        (not org-history-answer-was-given))
-;;               (let ((prompt (format "org-history: track this file and add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
-;;                 (setq org-history-answer-was-given (if (y-or-n-p prompt) 'track-file 'dont-track-file)))
-;;               ;; 2. Create  .dir-locals.el
-;;               (when (eq org-history-answer-was-given 'track-file)
-;;                 (org-history-dir-locals-append)))
-;;             ;; unconditionally
-;;             (org-history--commit last-commit-date-file))
-
-;;            ;; Case 3: Git repo exists, but requires a new commit or initial tracking approval
-;;            (t
-;;             (org-history-debug-print "org-history-hook-for-after-save Case3")
-;;             (let ((dir-locals (org-history--dir-locals-p rel-file-name)))
-;;               ;; 1. Ensure we have a clear tracking decision
-;;               (unless (and org-history-answer-was-given dir-locals)
-;;                 (let ((prompt-msg (format "org-history: enable auto-commit on save this file and in\n%s? "
-;;                                           (expand-file-name ".dir-locals.el" default-directory))))
-;;                   (setq org-history-answer-was-given
-;;                         (if (y-or-n-p prompt-msg) 'track-file 'dont-track-file))))
-
-;;               ;; 2. Execute tracking logic if allowed
-;;               (when (eq org-history-answer-was-given 'track-file)
-;;                 ;; Ensure Git repo is initialized with baseline settings if empty
-;;                 (unless (vc-git--run-command-string nil "log" "-1")
-;;                   (let ((inhibit-message t)) ; Keep the echo area clean during init loop
-;;                     (dolist (args org-history-git-init-commands)
-;;                       (apply #'vc-git-command nil 0 nil args))))
-
-;;                 ;; Create  .dir-locals.el
-;;                 (when (not dir-locals)
-;;                   (org-history-dir-locals-append))
-
-;;                 (org-history--commit last-commit-date-file)
-;;                 (unless last-commit-date-file
-;;                   (unless org-history-hide-dates
-;;                     (org-history-outline-add-dates)))))))
-
-;;           ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
-;;           (vc-file-clearprops buffer-file-name))))))
 
 
 (defun org-history-hook-for-after-save ()
@@ -688,7 +562,6 @@ Reliably check for interactive execution using :around advice.
 Argument ORIG-FUN is `org-cycle' and its ARGS."
   ;; 1. Check interactivity FIRST while org-cycle is at the top of the stack
   (let ((interactive-call (called-interactively-p 'any)))
-        ;; (hook-placed (org-history--check-hook-scope 'after-save-hook #'org-history-hook-for-after-save))) ; old
 
     ;; 2. Run the original org-cycle command so the heading actually changes state
     (apply orig-fun args)
