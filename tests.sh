@@ -1,0 +1,9 @@
+#!/bin/bash
+emacs -Q --batch --no-site-file -l org-history-debug.el -l org-history-outline.el -l org-history.el -l test-org-history.el -f ert-run-tests-batch-and-exit || exit 1
+# Single:
+# emacs -Q --batch --no-site-file \
+#   -l org-history-debug.el \
+#   -l org-history-outline.el \
+#   -l org-history.el \
+#   -l test-org-history.el \
+#   --eval "(ert-run-tests-batch-and-exit 'test-org-history-mode-activation)" || exit 1

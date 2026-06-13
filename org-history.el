@@ -60,6 +60,11 @@
 
 ;; Require 29.1 for `org-fold-folded-p'
 
+;; Donate, sponsor the author
+;; - BTC (Bitcoin) address: 1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25
+;; - USDT (Tether TRX-TRON) address: TVoXfYMkVYLnQZV3mGZ6GvmumuBfGsZzsN
+;; - TON (Telegram) address: UQC8rjJFCHQkfdp7KmCkTZCb5dGzLFYe2TzsiZpfsnyTFt9D
+
 ;;; Code:
 
 ;; Touch: I was looking for a job for many years. They are so much pigs, you even cant imagine.

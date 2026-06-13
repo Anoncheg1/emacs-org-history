@@ -4,4 +4,3 @@
 /.emacs.desktop
 /.emacs.desktop.lock
 elpa/
-tests.sh
