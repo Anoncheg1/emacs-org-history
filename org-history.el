@@ -257,7 +257,7 @@ to prevent layout syntax errors from desynchronizing the line counter."
           last-date-str)
       (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
         (with-temp-buffer
-          (when (zerop (vc-git-command t 0 nil "blame" "--date=short" "-c" file))
+          (when (zerop (vc-git-command t 0 nil "blame" "-M" "--date=short" "-c" file))
             (goto-char (point-min))
             ;; Optimization 1: Anchor search to the current line to limit regex engine workload
             (while (re-search-forward "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (line-end-position) t)
