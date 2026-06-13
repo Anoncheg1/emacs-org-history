@@ -162,18 +162,6 @@ Note: `vc-git-working-revision' - accept directory as argument,
       (when-let ((path (vc-git-root buffer-file-name)))
         (vc-git-working-revision path)))))
 
-(defun org-history--vc-git-get-last-commit-date (&optional file)
-  "Get commit date for FILE or for last commit.
-Return string date YYYY-MM-DD or nil.
-FILE should be tracked by git."
-  (if file
-      (when (vc-backend file)
-        (when-let ((d (vc-git--run-command-string buffer-file-name "log" "-1" "--format=%as" file)))
-          (string-trim d)))
-    ;; else
-    (when-let ((d (vc-git--run-command-string nil "show" "-s" "--format=%as")))
-    (string-trim d))))
-
 (defun org-history--vc-add-file (file &optional backend)
   "Track FILE.
 Uses `default-derectory'.
@@ -208,6 +196,20 @@ Optional argument BACKEND is Git or may be other."
 
         (message "Successfully unstaged %s" (file-name-nondirectory file)))
     (error "This file is not in a Git repository")))
+
+;; NOT USED
+(defun org-history--vc-git-get-last-commit-date (&optional file)
+  "Get commit date for FILE or for last commit.
+Return string date YYYY-MM-DD or nil.
+FILE should be tracked by git."
+  (if file
+      (when (vc-backend file)
+        (when-let ((d (vc-git--run-command-string buffer-file-name "log" "-1" "--format=%as" file)))
+          (string-trim d)))
+    ;; else
+    (when-let ((d (vc-git--run-command-string nil "show" "-s" "--format=%as")))
+    (string-trim d))))
+
 
 (defun org-history--vc-git-get-range-last-mod-date (file start end)
   "Return the last modification date (YYYY-MM-DD) for lines START to END in FILE.
