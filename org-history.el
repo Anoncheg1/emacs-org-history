@@ -66,6 +66,9 @@
 ;; - make it work with outline mode.
 ;; - command to add current folder to list
 ;; - tests for -outlines  functions and itegral tests for minor mode
+;; - create alternative to "git blame" for first (not last)
+;;  modification: git log -S "your line of text" --format="%cd"
+;;  --date=short --reverse
 
 ;; Require 29.1 for `org-fold-folded-p'
 
@@ -232,7 +235,7 @@ Uses `default-directory'."
         (error nil)))))
 
 (defun org-history--vc-git-blame-file (file)
-  "Return a hash table mapping line numbers to modification dates for FILE.
+  "Return a hash table mapping line numbers to last modification for FILE.
 
 An optimized version of `org-history--vc-git-get-range-last-mod-date'.
 Uses `default-directory'.
@@ -307,11 +310,11 @@ Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
 Use `default-directory' and variable"
   (org-history-debug-print "org-history--dir-locals-p N1 %s" rel-file-name)
   (org-history-debug-print "org-history--dir-locals-p N1" config)
-  (let* ((rel-file-name (or rel-file-name
-                            ;; (file-relative-name buffer-file-name default-directory)
-                            ;; (file-relative-name buffer-file-name (file-name-directory buffer-file-name))
-                            (file-name-nondirectory buffer-file-name)
-                            ))
+  (let* (
+         ;; (rel-file-name (or rel-file-name
+         ;;                    ;; (file-relative-name buffer-file-name default-directory)
+         ;;                    ;; (file-relative-name buffer-file-name (file-name-directory buffer-file-name))
+         ;;                    (file-name-nondirectory buffer-file-name)))
          (config (or config (when (file-exists-p ".dir-locals.el")
                               (with-temp-buffer
                                 (insert-file-contents ".dir-locals.el")
