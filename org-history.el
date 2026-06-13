@@ -144,8 +144,9 @@ Note: `vc-git-working-revision' - accept directory as argument,
       (when (vc-backend file)
         (vc-working-revision file)) ; require tracked file with commit
     ;; else
-    (when-let ((path (vc-git-root buffer-file-name)))
-      (vc-git-working-revision path))))
+    (when (vc-git-root buffer-file-name) ; check that .git exist
+      (when-let ((path (vc-git-root buffer-file-name)))
+        (vc-git-working-revision path)))))
 
 (defun org-history--vc-git-get-last-commit-date (&optional file)
   "Get commit date for FILE or for last commit.
@@ -595,16 +596,18 @@ STATE may be `overview', `contents', or `all'."
   (org-history-outline-clear-all-org-date-overlays))
 
 (defun org-history-show ()
-  "Hide dates only."
+  "Show dates only."
   (interactive)
-  (unless
-    (when (or org-history-mode
-              (memq 'org-history--cycle-hook org-cycle-hook)
-              (y-or-n-p (format "You want to see dates while org-history is not active?")))
-      (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
-      (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
+  (when (or org-history-mode
+            (memq 'org-history--cycle-hook org-cycle-hook)
+            (if (not (and (vc-git-root buffer-file-name) (org-history--vc-git-get-last-commit-hash)))
+                (progn (message "There is not .git with any dates to get.") nil)
+              ;; else
+              (y-or-n-p (format "You want to see dates while org-history is not active?"))))
+    (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
+    (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
+    (let ((vc-handled-backends '(Git)))
       (org-history-outline-add-dates))))
-
 
 ;; -=-= minor mode
 ;;;###autoload
@@ -619,7 +622,7 @@ STATE may be `overview', `contents', or `all'."
       (progn
         (let ((vc-handled-backends '(Git)))
           ;; no last commit - ask user to init .git
-          (when (not (org-history--vc-git-get-last-commit-hash)) ; any commits for file?
+          (when (or (not (vc-git-root buffer-file-name)) (not (org-history--vc-git-get-last-commit-hash))) ; any commits for file?
             (if (y-or-n-p (format "org-history: Do git init in %s? " default-directory))
                 (progn
                   (org-history-git-init (file-relative-name buffer-file-name default-directory)) ; (setq org-history-answer-was-given 'track-file))

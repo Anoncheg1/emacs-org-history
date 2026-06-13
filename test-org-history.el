@@ -25,7 +25,7 @@
 ;; -=-= 1)
 
 (defmacro test-org-history-with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
-  "Set up an isolated temporary Git and file environment for org-history testing.
+  "Set up an isolated temporary Git and file environment for `org-history' testing.
 Argument BUFFER-VAR .
 Argument FILE-VAR ss.
 Argument TEMP-DIR-VAR ss.
@@ -97,7 +97,7 @@ Optional argument BODY sd."
 ;; =========================================================================
 
 (ert-deftest test-org-history-hook--case2-transparent-amend ()
-  "Case 2: Same-day file edits with org-history history should amend cleanly without prompt."
+  "Case 2: Same-day file edits with `org-history' history should amend cleanly without prompt."
   (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
@@ -162,7 +162,8 @@ Optional argument BODY sd."
     (cl-letf (((symbol-function 'org-history--vc-git-get-last-commit-hash) (lambda () "mocked-hash"))
               ((symbol-function 'org-history-outline-add-dates) #'ignore)
               ((symbol-function 'org-history--show-dates-at-unfold) #'ignore)
-              ((symbol-function 'org-history--cycle-hook) #'ignore))
+              ((symbol-function 'org-history--cycle-hook) #'ignore)
+              ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
 
       ;; 1. Check activation behavior
       (org-history-mode 1)
