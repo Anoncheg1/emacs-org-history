@@ -31,6 +31,12 @@
 
 ;;; Commentary:
 
+;; This package allows you to:
+;; 1) Attach the dates of the last modification to Org headers as non-editable overlays.
+;; 2) Auto-commit with --amend once per day.
+;; 3) Request your confirmation only once.
+;; 4) Accurately save your answer to the .dir-locals.el file in the current directory.
+
 ;; Configuration:
 ;; (add-to-list 'load-path "/path-to/emacs-org-history")
 ;; (require 'org-history)
@@ -38,6 +44,9 @@
 ;; Activation: M-x org-history
 
 ;; Customization: M-x customize-group RET org-history
+
+;; Built-in Emacs alternative:
+;; M-x vc-annotate
 
 ;; Useful code:
 

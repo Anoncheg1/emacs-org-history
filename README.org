@@ -4,13 +4,16 @@
 [[https://stable.melpa.org/#/org-history][file:https://stable.melpa.org/packages/org-history-badge.svg]]
 
 * org-history
+
 *Version: 0.1*
 
 Show the last modification date for headers in Org-mode of GNU Emacs using git VCS and auto-commit.
 
 * Features
+
 - No buttons: simply enable the org-history-mode minor mode in the Org buffer.
-- Auto-commit and git initialization are requested once from the user.
+- Auto-commit with --amend per day
+- Bother you with question yes-or-no only one time.
 - Accurate tracking of the current file is enabled via the .dir-locals.el file in the current directory.
 
 * Configuration
@@ -31,7 +34,41 @@ Activation: ~M-x org-history-mode~
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png]]
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
 
+* Emacs built-in alternative
+
+To see history for every line in buffer use Built-in Emacs command:
+: M-x vc-annotate
+
+To have auto-commits you may use something like this:
+#+begin_src elisp :lexical t :results none :exports code :eval no
+(defun my-git-commit-on-save ()
+  "Automatically stage and commit/amend the current file on save using full commit body."
+  (interactive)
+  (when (and buffer-file-name (vc-backend buffer-file-name))
+    (let* ((file (shell-quote-argument buffer-file-name))
+           ;; Fetch the full commit body/message for this file
+           (info (string-trim (shell-command-to-string (format "git log -1 --pretty=%%B -- %s" file))))
+           (today (format-time-string "%F")))
+
+      ;; Always stage the current file changes first
+      (shell-command-to-string (format "git add %s" file))
+
+      ;; If the last commit message starts with "org-history [today's date]", amend it
+      (if (string-prefix-p "org-history" info)
+          (progn
+            (shell-command-to-string "git commit --amend --allow-empty --no-edit --date=now")
+            (message "VC-Git: Amended today's commit."))
+        ;; Otherwise, make a new commit with the date stamped in the message
+        (progn
+          (shell-command-to-string (format "git commit -m \"org-history %s\"" today))
+          (message "VC-Git: Created new commit."))))))
+
+;; Attach to the save hook
+(add-hook 'after-save-hook 'my-git-commit-on-save)
+#+end_src
+
 * Other packages
+
 - Navigation in Dired, Packages, Buffers modes https://github.com/Anoncheg1/firstly-search
 - Search with Chinese		https://github.com/Anoncheg1/pinyin-isearch
 - Ediff fix			https://github.com/Anoncheg1/ediffnw
@@ -45,6 +82,7 @@ Activation: ~M-x org-history-mode~
 - Call LLMs and agents from Org-mode cui blocks. https://github.com/Anoncheg1/emacs-cui
 
 * Donate, sponsor the author
+
 You can sponsor author crypto money directly with crypto currencies:
 - BTC (Bitcoin) address: 1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25
 
