@@ -64,6 +64,7 @@ To have auto-commits you may use something like this:
           (message "VC-Git: Created new commit."))))))
 
 ;; Attach to the save hook
+(setq vc-git-annotate-switches '("-M"))  ; git blame with immune to change order of headers
 (add-hook 'after-save-hook 'my-git-commit-on-save)
 #+end_src
 

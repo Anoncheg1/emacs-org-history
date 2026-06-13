@@ -241,6 +241,7 @@ The returned hash table uses `eql' as its test, where keys are line
 numbers (integers starting from 1) and values are plain strings representing
 the last modification date formatted as \"YYYY-MM-DD\".
 
+FILE should be relative to default-directory or full path.
 If FILE does not exist, is not registered under Git, or the underlying
 `git blame' command fails, an empty hash table is returned.
 
@@ -298,25 +299,37 @@ to prevent layout syntax errors from desynchronizing the line counter."
 
 (defun org-history--dir-locals-p (&optional rel-file-name config)
   "Check if there is rule for file in .dir-locals.el.
+Shoul be called with `default-directory' set to git root.
+CONFIG if not set reading from `buffer-file-name'.
 Files is REL-FILE-NAME or BUFFER-FILE-NAME.
 Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
  rule for REL-FILE-NAME to activate `org-mistory-mode'.
-Use `default-directory' and variable `buffer-file-name' for config reading if
- CONFIG is not provided."
+Use `default-directory' and variable "
   (org-history-debug-print "org-history--dir-locals-p N1 %s" rel-file-name)
   (org-history-debug-print "org-history--dir-locals-p N1" config)
-  (let* ((rel-file-name (or rel-file-name (file-relative-name buffer-file-name default-directory)))
+  (let* ((rel-file-name (or rel-file-name
+                            ;; (file-relative-name buffer-file-name default-directory)
+                            ;; (file-relative-name buffer-file-name (file-name-directory buffer-file-name))
+                            (file-name-nondirectory buffer-file-name)
+                            ))
          (config (or config (when (file-exists-p ".dir-locals.el")
                               (with-temp-buffer
                                 (insert-file-contents ".dir-locals.el")
                                 (ignore-errors (read (current-buffer)))))))
          (org-entries (cdr (assoc 'org-mode config)))) ; return nil if config is nil
+    (org-history-debug-print "org-history--dir-locals-p N2" config)
     (when org-entries
       (catch 'found
         (dolist (entry org-entries nil) ; returns nil if loop finishes naturally
-          (when (and (eq (car-safe entry) 'eval)
-                     (string-match-p (regexp-quote rel-file-name) (format "%S" entry)))
+          (org-history-debug-print "org-history--dir-locals-p N3" entry (car-safe (cdr-safe (cdr-safe entry))))
+          (when
+              (and (eq (car-safe entry) 'eval)
+                   ;;        (string-match-p (regexp-quote rel-file-name) (format "%S" entry)))
+                   (eval (car-safe (cdr-safe (cdr-safe entry)))))
             (throw 'found t)))))))
+
+;; (let ((default-directory (vc-git-root buffer-file-name)))
+;;   (org-history--dir-locals-p))
 
 
 (defun org-history-dir-locals-append ()
@@ -332,7 +345,9 @@ Return .dir-locals.el file path if added."
     (user-error "org-history: No default-directory"))
 
   (let* ((file-path (expand-file-name ".dir-locals.el" default-directory))
-         (rel-file-name (file-relative-name buffer-file-name default-directory))
+         ;; (rel-file-name (file-relative-name buffer-file-name default-directory))
+         ;; (rel-file-name (file-relative-name buffer-file-name (file-name-directory buffer-file-name)))
+         (rel-file-name (file-name-nondirectory buffer-file-name))
          ;; 1. Read existing config ONCE safely
          (config (when (file-exists-p file-path)
                    (with-temp-buffer
@@ -341,8 +356,8 @@ Return .dir-locals.el file path if added."
          ;; 2. Generate the new rule
          (new-rule `(eval . (when (and (fboundp 'org-history-mode)
                                        buffer-file-name
-                                       (file-equal-p buffer-file-name
-                                                     (expand-file-name ,rel-file-name default-directory)))
+                                       (file-equal-p (file-name-nondirectory buffer-file-name)
+                                                     ,rel-file-name))
                               (org-history-mode 1)))))
 
     (unless (org-history--dir-locals-p rel-file-name config)
