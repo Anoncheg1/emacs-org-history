@@ -42,25 +42,25 @@ To see history for every line in buffer use Built-in Emacs command:
 To have auto-commits you may use something like this:
 #+begin_src elisp :lexical t :results none :exports code :eval no
 (defun my-git-commit-on-save ()
-  "Automatically stage and commit/amend the current file on save using full commit body."
+  "Automatically stage and commit/amend the current file on save."
   (interactive)
   (when (and buffer-file-name (vc-backend buffer-file-name))
     (let* ((file (shell-quote-argument buffer-file-name))
-           ;; Fetch the full commit body/message for this file
-           (info (string-trim (shell-command-to-string (format "git log -1 --pretty=%%B -- %s" file))))
+           ;; Get last commit date (YYYY-MM-DD) and subject line in one clean shell call
+           (info (string-trim (shell-command-to-string (format "git log -1 --format=\"%%cs %%s\" -- %s" file))))
            (today (format-time-string "%F")))
 
       ;; Always stage the current file changes first
       (shell-command-to-string (format "git add %s" file))
 
-      ;; If the last commit message starts with "org-history [today's date]", amend it
-      (if (string-prefix-p "org-history" info)
+      ;; If the last commit was made today AND started with "org-history", amend it
+      (if (string-prefix-p (concat today " org-history") info)
           (progn
             (shell-command-to-string "git commit --amend --allow-empty --no-edit --date=now")
             (message "VC-Git: Amended today's commit."))
-        ;; Otherwise, make a new commit with the date stamped in the message
+        ;; Otherwise, make a new commit
         (progn
-          (shell-command-to-string (format "git commit -m \"org-history %s\"" today))
+          (shell-command-to-string "git commit -m \"org-history\"")
           (message "VC-Git: Created new commit."))))))
 
 ;; Attach to the save hook

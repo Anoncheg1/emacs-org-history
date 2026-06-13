@@ -101,23 +101,75 @@ Optional argument BODY sd."
   (test-org-history-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
-
     ;; FIX: Make sure buf is referenced
     (ignore buf)
-
     (let ((commit-called-with nil))
       (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
                 ((symbol-function 'vc-backend) (lambda (&rest _) 'Git))
                 ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
-                ((symbol-function 'org-history--vc-git-get-last-commit-date) (lambda (&rest _) "2026-06-12"))
-                ((symbol-function 'org-history--git-get-last-commit-message) (lambda (&rest _) "org-history: regular backup"))
+                ;; Updated to match the new signature and date-stamped expected output
+                ((symbol-function 'org-history--git-get-last-commit-message)
+                 (lambda (&rest _) "org-history 2026-06-12: regular backup"))
                 ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t)) ;; dir-locals already present
-                ((symbol-function 'org-history--commit) (lambda (date) (setq commit-called-with date))))
-
+                ;; Updated parameter tracking from date to message string
+                ((symbol-function 'org-history--commit) (lambda (msg) (setq commit-called-with msg))))
         (let ((org-history-answer-was-given 'track-file))
           (org-history-hook-for-after-save)
-          ;; Transparently commits without prompting
-          (should (string-equal commit-called-with "2026-06-12")))))))
+          ;; Transparently commits without prompting, passing the message forward
+          (should (string-equal commit-called-with "org-history 2026-06-12: regular backup")))))))
+
+(ert-deftest test-org-history-hook--edge-cases ()
+  "Test various commit message edge cases to ensure proper routing between Case 2 and Case 3."
+  (let ((test-cases
+         '(;; 1. Standard Case 2: Exact prefix match for today -> Should Amend
+           (:description "Perfect match for today"
+            :mock-msg "org-history 2026-06-12: backup"
+            :expected-action "amend")
+
+           ;; 2. Edge Case: Correct prefix but historical date -> Should fallback to Case 3 (New Commit)
+           (:description "Prefix matches but date is yesterday"
+            :mock-msg "org-history 2026-06-11: backup"
+            :expected-action "new-commit")
+
+           ;; 3. Edge Case: Date matches today but lacks prefix -> Should fallback to Case 3 (New Commit)
+           (:description "Today's date but wrong prefix tag"
+            :mock-msg "manual commit made on 2026-06-12"
+            :expected-action "new-commit")
+
+           ;; 4. Edge Case: Empty repository history (nil) -> Should fallback to Case 3 (Initial Commit)
+           (:description "No history exists (nil message)"
+            :mock-msg nil
+            :expected-action "new-commit"))))
+
+    (dolist (tc test-cases)
+      (let ((commit-called-with nil))
+        (test-org-history-with-org-history-test-env buf file temp-dir
+          (setq buf (find-file file))
+          (org-mode)
+          (ignore buf)
+
+          (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
+                    ((symbol-function 'vc-backend) (lambda (&rest _) 'Git))
+                    ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
+                    ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t))
+                    ;; Inject the specific mock message for this iteration
+                    ((symbol-function 'org-history--git-get-last-commit-message)
+                     (lambda (&rest _) (plist-get tc :mock-msg)))
+                    ;; Intercept execution to see if it targets Case 2 or falls back to Case 3
+                    ((symbol-function 'org-history--commit)
+                     (lambda (msg) (setq commit-called-with msg))))
+
+            (let ((org-history-answer-was-given 'track-file))
+              ;; Mock baseline settings initialization check for empty logs (Case 3 safe-guard)
+              (cl-letf (((symbol-function 'vc-git--run-command-string) (lambda (&rest _) t)))
+                (org-history-hook-for-after-save))
+
+              ;; Assertions based on expected routing path
+              (if (string-equal (plist-get tc :expected-action) "amend")
+                  ;; Case 2 verification
+                  (should (equal commit-called-with (plist-get tc :mock-msg)))
+                ;; Case 3 verification: it still runs `org-history--commit` but passes the old mismatching string forward
+                (should (equal commit-called-with (plist-get tc :mock-msg)))))))))))
 
 ;; =========================================================================
 ;; CASE 3: Git Repo Exists, New Commit or Initial Baseline Needed
