@@ -31,7 +31,7 @@
 
 ;;; Commentary:
 
-;; This package allows you to:
+;; This package allows to:
 ;; 1) Attach the dates of the last modification to Org headers as non-editable overlays.
 ;; 2) Auto-commit with --amend once per day.
 ;; 3) Request your confirmation only once.
