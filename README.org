@@ -1,5 +1,17 @@
+[[https://github.com/Anoncheg1/emacs-org-history/workflows/melpazoid/badge.svg]]
+[[http://melpa.org/#/org-history][file:https://melpa.org/packages/org-history-badge.svg]]
+[[https://github.com/Anoncheg1/emacs-org-history/workflows/melpazoid-release/badge.svg]]
+[[https://stable.melpa.org/#/org-history][file:https://stable.melpa.org/packages/org-history-badge.svg]]
+
 * org-history
-Show last modification date for headers in Org-mode of GNU Emacs
+*Version: 0.1*
+
+Show the last modification date for headers in Org-mode of GNU Emacs using git VCS and auto-commit.
+
+* Features
+- No buttons: simply enable the org-history-mode minor mode in the Org buffer.
+- Auto-commit and git initialization are requested once from the user.
+- Accurate tracking of the current file is enabled via the .dir-locals.el file in the current directory.
 
 * Configuration
 
@@ -8,7 +20,7 @@ Show last modification date for headers in Org-mode of GNU Emacs
 (require 'org-history)
 #+end_src
 
-Activation: ~M-x org-history~
+Activation: ~M-x org-history-mode~
 
 * Customization
 

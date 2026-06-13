@@ -97,6 +97,13 @@ Ignores: compiled files, backups, and lock files."
   :type '(repeat string)
   :group 'org-history)
 
+(defcustom org-history-hide-dates nil
+  "Non-nil means to hide dates after 2 seconds of mode activation.
+Timer is used to observe File-local variables, because it happen after
+ mode loading from dir-locals."
+  :type 'boolean
+  :group 'org-history)
+
 ;; ;; NOT USED
 ;; (defcustom org-history-directories nil
 ;;   "List of directories that processed without questions.
@@ -450,7 +457,7 @@ Assumes tracking confirmation has already been validated and set."
 (defun org-history-hook-for-after-save ()
   "Hook for `org-mode' buffers run after saving a file.
 
-When an org file is saved, check Git tracking status and org-history
+When an org file is saved, check Git tracking status and `org-history'
  configuration.  Prompts to enable tracking if needed, initializes Git
  repository if absent, amends or creates Git commits, updates
  `.dir-locals.el`, and synchronizes version control cache as
@@ -490,7 +497,10 @@ When an org file is saved, check Git tracking status and org-history
             (if (y-or-n-p (format "org-history: Do git init and activate auto-commit for this file in\n%s? " default-directory))
                 (progn
                   (org-history-git-init rel-file-name) ; add .dir-locals.el
-                  (org-history-outline-add-dates)
+                  (if org-history-hide-dates
+                      (message "org-history: dates was not shown because of org-history-hide-dates variable.")
+                       ;; else
+                    (org-history-outline-add-dates))
                   (setq org-history-answer-was-given 'track-file))
               (setq org-history-answer-was-given 'dont-track-file)))
 
@@ -535,7 +545,8 @@ When an org file is saved, check Git tracking status and org-history
 
                 (org-history--commit last-commit-date-file)
                 (unless last-commit-date-file
-                  (org-history-outline-add-dates))))))
+                  (unless org-history-hide-dates
+                    (org-history-outline-add-dates)))))))
 
           ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
           (vc-file-clearprops buffer-file-name))))))
@@ -575,7 +586,28 @@ STATE may be `overview', `contents', or `all'."
     (let ((vc-handled-backends '(Git)))
       (org-history-outline-add-dates (point-min) (point-max)))))
 
+;; -=-= interactive: hide dates
+(defun org-history-hide ()
+  "Hide dates only."
+  (interactive)
+  (advice-remove 'org-cycle #'org-history--show-dates-at-unfold)
+  (remove-hook 'org-cycle-hook #'org-history--cycle-hook t)
+  (org-history-outline-clear-all-org-date-overlays))
+
+(defun org-history-show ()
+  "Hide dates only."
+  (interactive)
+  (unless
+    (when (or org-history-mode
+              (memq 'org-history--cycle-hook org-cycle-hook)
+              (y-or-n-p (format "You want to see dates while org-history is not active?")))
+      (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
+      (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
+      (org-history-outline-add-dates))))
+
+
 ;; -=-= minor mode
+;;;###autoload
 (define-minor-mode org-history-mode
   "Minor mode for `org-mode' to showing date of last modified per outlier."
   :init-value nil
@@ -597,7 +629,17 @@ STATE may be `overview', `contents', or `all'."
           (org-history-outline-add-dates))
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
         (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
-        (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t))
+        (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
+        (let ((orig-buffer (current-buffer))) ; lexical binding
+          (run-with-timer
+           2.5 nil ; we use timer to to be able to see File-Local variables
+           (lambda ()
+             ;; Because of lexical binding, orig-buffer is automatically captured
+             (if (buffer-live-p orig-buffer)
+                 (with-current-buffer orig-buffer
+                   (when org-history-hide-dates
+                     (org-history-hide))))))))
+
     ;; else - off
     (advice-remove 'org-cycle #'org-history--show-dates-at-unfold)
     (remove-hook 'after-save-hook #'org-history-hook-for-after-save t)
@@ -606,6 +648,8 @@ STATE may be `overview', `contents', or `all'."
 
     (kill-local-variable 'org-history-answer-was-given)
     (message "org-history is disabled.")))
+
+(defalias 'org-history #'org-history-mode)
 
 
 ;; ;; NOT USED
