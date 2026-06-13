@@ -300,11 +300,11 @@ to prevent layout syntax errors from desynchronizing the line counter."
 (defun org-history--dir-locals-p (&optional rel-file-name config)
   "Check if there is rule for file in .dir-locals.el.
 Shoul be called with `default-directory' set to git root.
-CONFIG if not set reading from `buffer-file-name'.
+CONFIG if not set reading from variable `buffer-file-name'.
 Files is REL-FILE-NAME or BUFFER-FILE-NAME.
 Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
  rule for REL-FILE-NAME to activate `org-mistory-mode'.
-Use `default-directory' and variable "
+Use `default-directory' and variable"
   (org-history-debug-print "org-history--dir-locals-p N1 %s" rel-file-name)
   (org-history-debug-print "org-history--dir-locals-p N1" config)
   (let* ((rel-file-name (or rel-file-name
