@@ -123,8 +123,7 @@ Automatically deletes older date overlays on the same headline when
 ;; -=-= Attach-date
 (defun org-history-outline-add-dates (&optional page-beg page-end)
   "Collect line ranges for visible Org headings and apply dates separately.
-Optional arguments PAGE-BEG PAGE-END are position in current buffer.
-Warning: `org-history--vc-git-get-last-commit-date' should be checked."
+Optional arguments PAGE-BEG PAGE-END are position in current buffer."
   (interactive)
   (org-history-debug-print "org-history-outline-add-dates %s %s" page-beg page-end)
   ;; if not checked that commit exist error: gethash(4 nil) error in `org-history-outline--process-tasks'

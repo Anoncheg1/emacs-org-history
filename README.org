@@ -13,7 +13,7 @@ Show the last modification date for headers in Org-mode of GNU Emacs using git V
 
 - No buttons: simply enable the org-history-mode minor mode in the Org buffer.
 - Auto-commit with --amend per day
-- Bother you with question yes-or-no only one time.
+- Bother you with question yes-or-no one time only.
 - Accurate tracking of the current file is enabled via the .dir-locals.el file in the current directory.
 
 * Configuration

@@ -261,7 +261,13 @@ to prevent layout syntax errors from desynchronizing the line counter."
           last-date-str)
       (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
         (with-temp-buffer
-          (when (zerop (vc-git-command t 0 nil "blame" "-M" "--date=short" "-c" file))
+          ;; -w Ignore whitespace when comparing the parent’s version and the child’s to find where the lines came from.
+          ;; -M[<num>] Git detects movement and attributes the line to the original date , rather than new commit.
+          ;; <num> is optional, but it is the lower bound on the
+          ;; number of alphanumeric characters that Git must detect as
+          ;; moving/copying within a file for it to associate those lines with the
+          ;; parent commit. The default value is
+          (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" file))
             (goto-char (point-min))
             ;; Optimization 1: Anchor search to the current line to limit regex engine workload
             (while (re-search-forward "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (line-end-position) t)
@@ -490,12 +496,13 @@ Assumes tracking confirmation has already been validated and set."
   (when (and (not (eq org-history-answer-was-given 'dont-track-file))
              buffer-file-name
              default-directory)
-    (let ((git-root (vc-git-root buffer-file-name))
+    (let ((before-answer org-history-answer-was-given)
+          (git-root (vc-git-root buffer-file-name))
           (is-file-tracked (eq 'Git (vc-backend buffer-file-name)))
           (current-date (format-time-string "%F"))) ; Y-%m-%d
-      (let ((default-directory (or git-root default-directory)))
+      (let ((default-directory (or git-root default-directory))) ; use git-root
         (vc-file-clearprops buffer-file-name)
-        (let* ((last-commit-message-file
+        (let* ((file-last-commit-message
                 (when is-file-tracked (org-history--git-get-last-commit-message buffer-file-name)))
                (rel-file-name (file-relative-name buffer-file-name default-directory))
                ;; Construct the matching target string for Case 2
@@ -505,6 +512,7 @@ Assumes tracking confirmation has already been validated and set."
           (cond
            ;; Case 1: No Git repository exists at all
            ((not git-root)
+            (org-history-debug-print "org-history-hook-for-after-save Case 1")
             (if (y-or-n-p (format "org-history: Do git init and activate auto-commit for this file in\n%s? " default-directory))
                 (progn
                   (org-history-git-init rel-file-name)
@@ -515,41 +523,59 @@ Assumes tracking confirmation has already been validated and set."
               (setq org-history-answer-was-given 'dont-track-file)))
 
            ;; Case 2: Git repo exists + starts with "org-history [today's date]" -> Transparently Amend
-           ((and last-commit-message-file
-                 (string-prefix-p expected-prefix last-commit-message-file))
+           ((and file-last-commit-message
+                 (string-prefix-p expected-prefix file-last-commit-message))
+            (org-history-debug-print "org-history-hook-for-after-save Case 2")
             ;; 1. Ensure we have a tracking decision if we don't already
-            (when (and (not (org-history--dir-locals-p rel-file-name))
-                       (not org-history-answer-was-given))
-              (let ((prompt (format "org-history: track this file and add record for this file in\n%s? " (expand-file-name ".dir-locals.el" default-directory))))
+            (if (not (or org-history-answer-was-given ; 1
+                         (org-history--dir-locals-p rel-file-name))) ; 2
+              (let ((prompt (format "org-history: track this file and add record for this file in\n%s? "
+                                    (expand-file-name ".dir-locals.el" default-directory))))
                 (setq org-history-answer-was-given (if (y-or-n-p prompt) 'track-file 'dont-track-file)))
-              (when (eq org-history-answer-was-given 'track-file)
-                (org-history-dir-locals-append)))
-            ;; Execute updated commit routine (passes the message forward)
-            (org-history--commit last-commit-message-file))
+              ;; else - no need to ask
+              (setq org-history-answer-was-given 'track-file))
+            ;; Create  .dir-locals.el
+            (when (and (not before-answer)
+                       (eq org-history-answer-was-given 'track-file))
+              (org-history-dir-locals-append))
+            ;; 2. Execute updated commit routine (passes the message forward)
+            (org-history--commit file-last-commit-message)
+            ;; (unless org-history-hide-dates
+            ;;       (org-history-outline-add-dates)) ; too aggressive?
+            )
 
            ;; Case 3: Git repo exists, but requires a new commit or initial tracking approval
+           ;; if was not asked and dir-locals not exist do inits
            (t
-            (let ((dir-locals (org-history--dir-locals-p rel-file-name)))
-              ;; 1. Ensure we have a clear tracking decision
-              (unless (and org-history-answer-was-given dir-locals)
-                (let ((prompt-msg (format "org-history: enable auto-commit on save this file and in\n%s? "
-                                          (expand-file-name ".dir-locals.el" default-directory))))
-                  (setq org-history-answer-was-given (if (y-or-n-p prompt-msg) 'track-file 'dont-track-file))))
-              ;; 2. Execute tracking logic if allowed
-              (when (eq org-history-answer-was-given 'track-file)
-                ;; Ensure Git repo is initialized with baseline settings if empty
-                (unless (vc-git--run-command-string nil "log" "-1")
-                  (let ((inhibit-message t))
-                    (dolist (args org-history-git-init-commands)
-                      (apply #'vc-git-command nil 0 nil args))))
-                ;; Create  .dir-locals.el
-                (when (not dir-locals)
-                  (org-history-dir-locals-append))
-                ;; Passes the message file text (or nil) to handle new commit branches
-                (org-history--commit last-commit-message-file)
-                ;; Show dates
-                (unless (or last-commit-message-file org-history-hide-dates)
-                  (org-history-outline-add-dates))))))
+            (org-history-debug-print "org-history-hook-for-after-save Case 3")
+            ;; 1. Ensure we have a clear tracking decision
+            (if (not (or org-history-answer-was-given ; 1
+                         (org-history--dir-locals-p rel-file-name))) ; 2 - ask only if
+              (let ((prompt-msg (format "org-history: enable auto-commit on save this file and in\n%s? "
+                                        (expand-file-name ".dir-locals.el" default-directory))))
+                (setq org-history-answer-was-given (if (y-or-n-p prompt-msg) 'track-file 'dont-track-file)))
+              ;; else - no need to ask
+              (setq org-history-answer-was-given 'track-file))
+            ;; 2. do init if was not asked before
+            (when (and (not before-answer)
+                       (eq org-history-answer-was-given 'track-file))
+              ;; Create  .dir-locals.el
+              (org-history-dir-locals-append))
+
+
+
+              ;; 3. if tracking do commit
+            (when (eq org-history-answer-was-given 'track-file)
+              ;; Ensure Git repo is initialized with baseline settings if empty
+              (unless (vc-git--run-command-string nil "log" "-1")
+                (let ((inhibit-message t))
+                  (dolist (args org-history-git-init-commands)
+                    (apply #'vc-git-command nil 0 nil args))))
+              ;; Passes the message file text (or nil) to handle new commit branches
+              (org-history--commit file-last-commit-message)
+              ;; Show dates
+              (unless org-history-hide-dates
+                (org-history-outline-add-dates))))) ; too agressive?
           ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
           (vc-file-clearprops buffer-file-name))))))
 
@@ -629,7 +655,7 @@ STATE may be `overview', `contents', or `all'."
                   (org-history--commit "")) ; add commit
               ;; else
               (setq org-history-answer-was-given 'dont-track-file)))
-          (org-history-outline-add-dates))
+          (org-history-outline-add-dates)) ; check last commit exist
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
         (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
         (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
