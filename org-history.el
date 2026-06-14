@@ -234,55 +234,6 @@ Uses `default-directory'."
                 (string-trim output))))
         (error nil)))))
 
-(defun org-history--vc-git-blame-file (file)
-  "Return a hash table mapping line numbers to last modification for FILE.
-
-An optimized version of `org-history--vc-git-get-range-last-mod-date'.
-Uses `default-directory'.
-
-The returned hash table uses `eql' as its test, where keys are line
-numbers (integers starting from 1) and values are plain strings representing
-the last modification date formatted as \"YYYY-MM-DD\".
-
-FILE should be relative to default-directory or full path.
-If FILE does not exist, is not registered under Git, or the underlying
-`git blame' command fails, an empty hash table is returned.
-
-To minimize memory allocation and prevent Garbage Collection (GC) pressure,
-consecutive lines that share identical modification dates point to the exact
-same string object in memory.  The search is strictly bounded line-by-line
-to prevent layout syntax errors from desynchronizing the line counter."
-  (when (and (file-exists-p file)
-             default-directory
-             ;; (org-history--vc-git-get-last-commit-hash file) ; have commits?
-             (vc-git-responsible-p default-directory))
-    (let ((line-dates (make-hash-table :test 'eql))
-          (line-num 1)
-          last-date-str)
-      (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
-        (with-temp-buffer
-          ;; -w Ignore whitespace when comparing the parent’s version and the child’s to find where the lines came from.
-          ;; -M[<num>] Git detects movement and attributes the line to the original date , rather than new commit.
-          ;; <num> is optional, but it is the lower bound on the
-          ;; number of alphanumeric characters that Git must detect as
-          ;; moving/copying within a file for it to associate those lines with the
-          ;; parent commit. The default value is
-          (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" file))
-            (goto-char (point-min))
-            ;; Optimization 1: Anchor search to the current line to limit regex engine workload
-            (while (re-search-forward "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (line-end-position) t)
-              (let ((date-str (match-string-no-properties 1)))
-                ;; Optimization 2: String Deduplication to drastically cut GC pressure
-                (if (and last-date-str (string= date-str last-date-str))
-                    (puthash line-num last-date-str line-dates)
-                  (setq last-date-str date-str)
-                  (puthash line-num date-str line-dates)))
-              (setq line-num (1+ line-num))
-              ;; Optimization 3: Move explicitly to the next line to avoid double-matching
-              ;; if a code comment accidentally contains a date string.
-              (forward-line 1)))))
-      line-dates)))
-
 ;; -=-= function: add record to .dir-locals.el
 ;; ----------------------- append-after-save ---------------
 ;; [Original Config] ---> Extract 'org-mode entries (File A's rules)
@@ -623,7 +574,7 @@ STATE may be `overview', `contents', or `all'."
 (defun org-history-show ()
   "Show dates only."
   (interactive)
-  (when (or org-history-mode
+  (when (or (bound-and-true-p org-history-mode)
             (memq 'org-history--cycle-hook org-cycle-hook)
             (if (not (and (vc-git-root buffer-file-name) (org-history--vc-git-get-last-commit-hash)))
                 (progn (message "There is not .git with any dates to get.") nil)
