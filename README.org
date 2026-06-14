@@ -5,7 +5,7 @@
 
 * org-history
 
-*Version: 0.1*
+*Version: 0.2*
 
 Show the last modification date for headers in Org-mode of GNU Emacs using git VCS and auto-commit.
 

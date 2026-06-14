@@ -4,7 +4,7 @@
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
 ;; URL: https://codeberg.org/Anoncheg/emacs-org-history
-;; Version: 0.1
+;; Version: 0.2
 ;; Package-Requires: ((emacs "29.1"))
 
 (require 'ert)
