@@ -180,7 +180,8 @@ to prevent layout syntax errors from desynchronizing the line counter."
   "Process TASKS instantly by pre-caching Git blame data using native loops.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  set to oldest date during applying if it not older than
- `org-history-outline-max-days' orginal value."
+ `org-history-outline-max-days' orginal value.
+Argument COMMIT-HASH full hash of commit for current file."
   (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" org-history-outline--git-last-commit)
   ;; (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
   (unless (string-equal commit-hash org-history-outline--git-last-commit)
