@@ -120,38 +120,6 @@ Automatically deletes older date overlays on the same headline when
   (font-lock-flush)
   (message "Successfully cleared all header date overlays."))
 
-;; -=-= Attach-date
-(defun org-history-outline-add-dates (&optional page-beg page-end)
-  "Collect line ranges for visible Org headings and apply dates separately.
-Optional arguments PAGE-BEG PAGE-END are position in current buffer."
-  (interactive)
-  (org-history-debug-print "org-history-outline-add-dates %s %s" page-beg page-end)
-  ;; if not checked that commit exist error: gethash(4 nil) error in `org-history-outline--process-tasks'
-    (let (tasks)
-      (save-excursion
-        (goto-char (or page-beg (point-min)))
-        ;; Ensure we start at the first heading
-        (unless (org-at-heading-p)
-          (outline-next-heading))
-
-        ;; PHASE 1: Collect coordinates without touching Git or overlays
-        (while (and (not (eobp))
-                    (if page-end (< (point) page-end) t))
-          (unless (org-fold-core-get-folding-spec 'headline (point))
-            (let* ((heading-pos (point))
-                   (start (save-excursion (forward-line 1) (line-number-at-pos)))
-                   (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
-                   (real-start (min start end))
-                   (real-end (max start end)))
-              ;; Push a task tuple: (heading-marker start-line end-line)
-              ;; Using a marker ensures the position stays accurate even if the buffer shifts
-              (push (list (copy-marker heading-pos) real-start real-end) tasks)))
-          (outline-next-heading)))
-
-      ;; PHASE 2: Process the collected list
-      (when tasks
-        (org-history-outline--process-tasks (nreverse tasks) (unless (or page-beg page-end) t)))))
-
 ;; -=-= git blame
 (defun org-history-outline--vc-git-blame-file (file)
   "Return a hash table mapping line numbers to last modification for FILE.
@@ -208,66 +176,66 @@ to prevent layout syntax errors from desynchronizing the line counter."
 (defvar-local org-history-outline--git-last-commit nil
   "Used to check if cache required to be updated.")
 
-(defun org-history-outline--process-tasks (tasks &optional set-oldest)
+(defun org-history-outline--process-tasks (tasks commit-hash &optional set-oldest)
   "Process TASKS instantly by pre-caching Git blame data using native loops.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  set to oldest date during applying if it not older than
  `org-history-outline-max-days' orginal value."
   (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" org-history-outline--git-last-commit)
-  (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
-    (unless (string-equal commit-hash org-history-outline--git-last-commit)
-      (setq org-history-outline--git-blame-cache (org-history-outline--vc-git-blame-file buffer-file-name))
-      (setq org-history-outline--git-last-commit commit-hash))
-    (org-history-debug-print "org-history-outline--process-tasks N2")
-    ;; PHASE 1: Process ranges instantly using native loops
-    (when org-history-outline--git-blame-cache
-      (let* (file-oldest
-             max-days
-             (tasks-with-dates
-              (mapcar (lambda (task)
-                        (let ((marker (nth 0 task))
-                              (start  (nth 1 task))
-                              (end    (nth 2 task))
-                              (latest "1970-01-01"))
-                          ;; Native loop over the line range to find the newest date
-                          (let ((l start))
-                            (while (<= l end)
-                              (let ((l-date (gethash l org-history-outline--git-blame-cache)))
-                                (when (and l-date (string> l-date latest))
-                                  (setq latest l-date)))
-                              (setq l (1+ l))))
-                          ;; Now update file-oldest with the oldest date found
-                          (when (and (not (string= latest "1970-01-01"))
-                                     (or (not file-oldest)
-                                         (string< latest file-oldest)))
-                            (setq file-oldest latest))
-                          ;; Return pair: (marker . date-str) or nil if unchanged from epoch
-                          (cons marker (unless (string= latest "1970-01-01") latest))))
-                      tasks)))
-        (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
+  ;; (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
+  (unless (string-equal commit-hash org-history-outline--git-last-commit)
+    (setq org-history-outline--git-blame-cache (org-history-outline--vc-git-blame-file buffer-file-name))
+    (setq org-history-outline--git-last-commit commit-hash))
+  (org-history-debug-print "org-history-outline--process-tasks N2")
+  ;; PHASE 1: Process ranges instantly using native loops
+  (when org-history-outline--git-blame-cache
+    (let* (file-oldest
+           max-days
+           (tasks-with-dates
+            (mapcar (lambda (task)
+                      (let ((marker (nth 0 task))
+                            (start  (nth 1 task))
+                            (end    (nth 2 task))
+                            (latest "1970-01-01"))
+                        ;; Native loop over the line range to find the newest date
+                        (let ((l start))
+                          (while (<= l end)
+                            (let ((l-date (gethash l org-history-outline--git-blame-cache)))
+                              (when (and l-date (string> l-date latest))
+                                (setq latest l-date)))
+                            (setq l (1+ l))))
+                        ;; Now update file-oldest with the oldest date found
+                        (when (and (not (string= latest "1970-01-01"))
+                                   (or (not file-oldest)
+                                       (string< latest file-oldest)))
+                          (setq file-oldest latest))
+                        ;; Return pair: (marker . date-str) or nil if unchanged from epoch
+                        (cons marker (unless (string= latest "1970-01-01") latest))))
+                    tasks)))
+      (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
 
-        (when (and set-oldest file-oldest)
-          (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest))) ; in repo
-          (setq org-history-outline-max-days max-days)
-          (org-history-debug-print "org-history-outline--process-tasks N3 %s" max-days (org-today) (org-time-string-to-absolute file-oldest))
-          ;; check boundaries
-          (if (> max-days org-history-outline-max-days)
-              (setq org-history-outline-max-days org-history-outline-max-days)
-            ;; else
-            (when (< max-days org-history-outline-min-days)
-              (setq org-history-outline-max-days org-history-outline-min-days)))
-          (message "org-history: max-days set to %s days." org-history-outline-max-days))
+      (when (and set-oldest file-oldest)
+        (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest))) ; in repo
+        (setq org-history-outline-max-days max-days)
+        (org-history-debug-print "org-history-outline--process-tasks N3 %s" max-days (org-today) (org-time-string-to-absolute file-oldest))
+        ;; check boundaries
+        (if (> max-days org-history-outline-max-days)
+            (setq org-history-outline-max-days org-history-outline-max-days)
+          ;; else
+          (when (< max-days org-history-outline-min-days)
+            (setq org-history-outline-max-days org-history-outline-min-days)))
+        (message "org-history: max-days set to %s days." org-history-outline-max-days))
 
-        ;; PHASE 2: Apply Overlays using native dolist
-        (dolist (cell tasks-with-dates)
-          (let ((marker (car cell))
-                (date-str (cdr cell)))
-            (when date-str
-              ;; (with-current-buffer (marker-buffer marker)
-              (save-excursion
-                (goto-char (marker-position marker))
-                (org-history-outline--outline-attach-date date-str)))
-            (set-marker marker nil)))))))
+      ;; PHASE 2: Apply Overlays using native dolist
+      (dolist (cell tasks-with-dates)
+        (let ((marker (car cell))
+              (date-str (cdr cell)))
+          (when date-str
+            ;; (with-current-buffer (marker-buffer marker)
+            (save-excursion
+              (goto-char (marker-position marker))
+              (org-history-outline--outline-attach-date date-str)))
+          (set-marker marker nil))))))
 
 
 ;;; provide

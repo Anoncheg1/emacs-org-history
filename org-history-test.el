@@ -40,7 +40,7 @@ Optional argument BODY sd."
            ;; Initialize dummy functions that are called in the hook but not provided
            (cl-letf* (((symbol-function 'org-history-debug-print) #'ignore)
                       ((symbol-function 'org-history-git-init) #'ignore)
-                      ((symbol-function 'org-history-outline-add-dates) #'ignore)
+                      ((symbol-function 'org-history-add-dates) #'ignore)
                       ((symbol-function 'org-history-dir-locals-append) #'ignore)
                       ((symbol-function 'org-history--commit) #'ignore))
              ,@body))
@@ -212,7 +212,7 @@ Optional argument BODY sd."
     (ignore buf)
 
     (cl-letf (((symbol-function 'org-history--vc-git-get-last-commit-hash) (lambda () "mocked-hash"))
-              ((symbol-function 'org-history-outline-add-dates) #'ignore)
+              ((symbol-function 'org-history-add-dates) #'ignore)
               ((symbol-function 'org-history--show-dates-at-unfold) #'ignore)
               ((symbol-function 'org-history--cycle-hook) #'ignore)
               ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
@@ -372,7 +372,7 @@ Verify that an untracked file in an existing Git repository falls into
                        ;; Prevent real directory structures mutation inside our test
                        ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) nil))
                        ((symbol-function 'org-history-dir-locals-append) #'ignore)
-                       ((symbol-function 'org-history-outline-add-dates) #'ignore)
+                       ((symbol-function 'org-history-add-dates) #'ignore)
                        ;; Track when the commit command is triggered by the hook
                        ((symbol-function 'org-history--commit) (lambda (date) (setq commit-executed-date (or date 'triggered))))
                        ;; Mock user interactive responses to accept tracking setup
@@ -533,7 +533,7 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
 
 ;;     (cl-letf (((symbol-function 'org-at-heading-p) (lambda () t))
 ;;               ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil)) ;; Unfolded
-;;               ((symbol-function 'org-history-outline-add-dates) (lambda (&rest _) (setq add-dates-called t)))
+;;               ((symbol-function 'org-history-add-dates) (lambda (&rest _) (setq add-dates-called t)))
 ;;               (org-history-mode t))
 
 ;;       ;; Simulate an execution where an interactive command called a helper,
@@ -556,7 +556,7 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
       (cl-letf (;; Fix: Change (lambda () t) to (lambda (&rest _) t)
                 ((symbol-function 'org-at-heading-p) (lambda (&rest _) t))
                 ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil))
-                ((symbol-function 'org-history-outline-add-dates) (lambda (&rest _) (setq add-dates-called t)))
+                ((symbol-function 'org-history-add-dates) (lambda (&rest _) (setq add-dates-called t)))
                 (org-history-mode t))
         (cl-letf (((symbol-function 'called-interactively-p)
                    (lambda (kind) (if (eq kind 'any) t nil))))
@@ -597,7 +597,7 @@ clean error and refuses to attach hooks."
 Robust: Verify `org-history--cycle-hook' behaves predictably when
  third-party extensions pass non-standard states or empty selections."
   (let ((dates-calculated 0))
-    (cl-letf (((symbol-function 'org-history-outline-add-dates)
+    (cl-letf (((symbol-function 'org-history-add-dates)
                (lambda (&rest _) (cl-incf dates-calculated))))
 
       (with-temp-buffer
