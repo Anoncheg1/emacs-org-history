@@ -37,13 +37,18 @@
 ;; 3) Request your confirmation only once.
 ;; 4) Accurately save your answer to the .dir-locals.el file in the current directory.
 
-;; Configuration:
+;;; Configuration:
+
 ;; (add-to-list 'load-path "/path-to/emacs-org-history")
 ;; (require 'org-history)
 
-;; Activation: M-x org-history
+;;; Activation:
 
-;; Customization: M-x customize-group RET org-history
+;; M-x org-history
+
+;;; Customization:
+
+;; M-x customize-group RET org-history
 
 ;; Built-in Emacs alternative:
 ;; M-x vc-annotate
@@ -56,12 +61,13 @@
 ;; (vc-git-root buffer-file-name)
 ;; - Check if there is .git
 
-;; How this works:
+;;;; How this works:
 
 ;; We accuratelly do "git commit --amend" for same date or create new
 ;;  commit if date changed.
 
 ;;; TODO:
+
 ;; - check org-history-directories
 ;; - make it work with outline mode.
 ;; - command to add current folder to list
@@ -71,6 +77,20 @@
 ;;  --date=short --reverse
 
 ;; Require 29.1 for `org-fold-folded-p'
+
+;;;; Other packages:
+
+;; - Modern navigation in major modes https://github.com/Anoncheg1/firstly-search
+;; - Search with Chinese	https://github.com/Anoncheg1/pinyin-isearch
+;; - Ediff no 3-th window	https://github.com/Anoncheg1/ediffnw
+;; - Dired history		https://github.com/Anoncheg1/dired-hist
+;; - Selected window contrast	https://github.com/Anoncheg1/selected-window-contrast
+;; - Copy link to clipboard	https://github.com/Anoncheg1/emacs-org-links
+;; - Solution for "callback hell"	https://github.com/Anoncheg1/emacs-async1
+;; - Restore buffer state	https://github.com/Anoncheg1/emacs-unmodified-buffer1
+;; - outline.el usage		https://github.com/Anoncheg1/emacs-outline-it
+;; - Dates for Org-mode headers	https://github.com/Anoncheg1/emacs-org-history
+;; - Call LLMs and agents from Org-mode cui blocks https://github.com/Anoncheg1/emacs-cui
 
 ;; Donate, sponsor the author
 ;; - BTC (Bitcoin) address: 1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25
