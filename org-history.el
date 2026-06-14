@@ -490,7 +490,6 @@ Assumes tracking confirmation has already been validated and set."
         (vc-git-command nil 0 nil "commit" "-m" (format "org-history %s" current-date))
         (message "VC-Git: Created new date-stamped commit.")))))
 
-
 (defun org-history-hook-for-after-save ()
   "Hook for `org-mode' buffers run after saving a file."
   (when (and (not (eq org-history-answer-was-given 'dont-track-file))

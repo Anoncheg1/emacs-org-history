@@ -1,4 +1,4 @@
-;;; test-org-history.el --- Tests -*- lexical-binding: t; -*-
+;;; org-history-test.el --- Tests -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 github.com/Anoncheg1,codeberg.org/Anoncheg
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
@@ -16,7 +16,7 @@
 
 ;;; Commentary:
 
-;; tests for test-org-history
+;; tests for org-history-test
 
 ;;; Code:
 
@@ -24,7 +24,7 @@
 
 ;; -=-= 1)
 
-(defmacro test-org-history-with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
+(defmacro org-history-test-with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
   "Set up an isolated temporary Git and file environment for `org-history' testing.
 Argument BUFFER-VAR .
 Argument FILE-VAR ss.
@@ -56,9 +56,9 @@ Optional argument BODY sd."
 ;; CASE 1: No Git Repository Exists At All
 ;; =========================================================================
 
-(ert-deftest test-org-history-hook--case1-user-accepts ()
+(ert-deftest org-history-test-hook--case1-user-accepts ()
   "Case 1: No Git repo.  User answers YES to initializing tracking."
-  (test-org-history-with-org-history-test-env buf file temp-dir
+  (org-history-test-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
     (insert "Heading 1\n")
@@ -76,9 +76,9 @@ Optional argument BODY sd."
           (should init-called)
           (should (eq org-history-answer-was-given 'track-file)))))))
 
-(ert-deftest test-org-history-hook--case1-user-declines ()
+(ert-deftest org-history-test-hook--case1-user-declines ()
   "Case 1: No Git repo.  User answers NO to initializing tracking."
-  (test-org-history-with-org-history-test-env buf file temp-dir
+  (org-history-test-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
 
@@ -96,9 +96,9 @@ Optional argument BODY sd."
 ;; CASE 2: Git Repo Exists + Same Day + Org-History Commit Prefix
 ;; =========================================================================
 
-(ert-deftest test-org-history-hook--case2-transparent-amend ()
+(ert-deftest org-history-test-hook--case2-transparent-amend ()
   "Case 2: Same-day file edits with `org-history' history should amend cleanly without prompt."
-  (test-org-history-with-org-history-test-env buf file temp-dir
+  (org-history-test-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
     ;; FIX: Make sure buf is referenced
@@ -118,7 +118,7 @@ Optional argument BODY sd."
           ;; Transparently commits without prompting, passing the message forward
           (should (string-equal commit-called-with "org-history 2026-06-12: regular backup")))))))
 
-(ert-deftest test-org-history-hook--edge-cases ()
+(ert-deftest org-history-test-hook--edge-cases ()
   "Test various commit message edge cases to ensure proper routing between Case 2 and Case 3."
   (let ((test-cases
          '(;; 1. Standard Case 2: Exact prefix match for today -> Should Amend
@@ -143,7 +143,7 @@ Optional argument BODY sd."
 
     (dolist (tc test-cases)
       (let ((commit-called-with nil))
-        (test-org-history-with-org-history-test-env buf file temp-dir
+        (org-history-test-with-org-history-test-env buf file temp-dir
           (setq buf (find-file file))
           (org-mode)
           (ignore buf)
@@ -175,9 +175,9 @@ Optional argument BODY sd."
 ;; CASE 3: Git Repo Exists, New Commit or Initial Baseline Needed
 ;; =========================================================================
 
-(ert-deftest test-org-history-hook--case3-new-day-commit ()
+(ert-deftest org-history-test-hook--case3-new-day-commit ()
   "Case 3: A Git repo exists, but it's a new calendar day.  Should trigger a brand new commit."
-  (test-org-history-with-org-history-test-env buf file temp-dir
+  (org-history-test-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
 
@@ -202,9 +202,9 @@ Optional argument BODY sd."
 ;; MINOR MODE INTERACTION: `org-history-mode'
 ;; =========================================================================
 
-(ert-deftest test-org-history-mode-activation ()
+(ert-deftest org-history-test-mode-activation ()
   "Ensure `org-history-mode' safely activates inside org buffers and binds hooks correctly."
-  (test-org-history-with-org-history-test-env buf file temp-dir
+  (org-history-test-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
     (org-mode)
 
@@ -229,7 +229,7 @@ Optional argument BODY sd."
         (should-not (memq #'org-history-hook-for-after-save after-save-hook))))))
 
 
-(ert-deftest test-org-history-commit-on-save--full-lifecycle2 ()
+(ert-deftest org-history-test-commit-on-save--full-lifecycle2 ()
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
          (test-file (expand-file-name "test-file.txt" temp-dir))
          (default-directory temp-dir))
@@ -251,7 +251,7 @@ Optional argument BODY sd."
         (kill-buffer (get-file-buffer test-file)))
       (delete-directory temp-dir t))))
 
-(ert-deftest test-org-history-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
+(ert-deftest org-history-test-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
   "Test.
 Interaction when a repository baseline is established, and a second file
  is added into the tracking loop on the same day."
@@ -330,7 +330,7 @@ Interaction when a repository baseline is established, and a second file
       (delete-directory temp-dir t))))
 
 
-(ert-deftest test-org-history-vc-git-commit-on-save--untracked-file ()
+(ert-deftest org-history-test-vc-git-commit-on-save--untracked-file ()
   "Test.
 Verify that an untracked file in an existing Git repository falls into
  Case 3, prompts the user for tracking approval, and completes
@@ -400,7 +400,7 @@ Verify that an untracked file in an existing Git repository falls into
 
 
 
-(ert-deftest test-org-history--my-append-existing-dir-locals ()
+(ert-deftest org-history-test--my-append-existing-dir-locals ()
   (let* ((temp-dir (file-name-as-directory (make-temp-file "ert-test-" t)))
          (target-file (expand-file-name ".dir-locals.el" temp-dir))
          (dummy-file (expand-file-name "dummy.org" temp-dir))
@@ -423,7 +423,7 @@ Verify that an untracked file in an existing Git repository falls into
         (kill-buffer (get-file-buffer dummy-file)))
       (delete-directory temp-dir t))))
 
-(ert-deftest test-org-history--append-after-save-to-dir-locals ()
+(ert-deftest org-history-test--append-after-save-to-dir-locals ()
   (let* ((temp-dir (make-temp-file "org-history-test-" t))
          (expected-file (expand-file-name ".dir-locals.el" temp-dir))
          (dummy-file (expand-file-name "dummy.org" temp-dir)))
@@ -448,7 +448,7 @@ Verify that an untracked file in an existing Git repository falls into
         (delete-file expected-file))
       (delete-directory temp-dir t))))
 
-(ert-deftest test-org-history--vc-git-integration-comprehensive ()
+(ert-deftest org-history-test--vc-git-integration-comprehensive ()
   (let* ((temp-dir (make-temp-file "git-test-" t))
          (default-directory (file-name-as-directory temp-dir))
          (tracked-file "sample.txt")
@@ -488,7 +488,7 @@ Verify that an untracked file in an existing Git repository falls into
                                expected))))))
       (delete-directory temp-dir t))))
 
-(ert-deftest test-org-history--vc-git-integration-no-repo ()
+(ert-deftest org-history-test--vc-git-integration-no-repo ()
   (let* ((temp-dir (make-temp-file "git-test-norepo-" t))
          (default-directory (file-name-as-directory temp-dir))
          (test-file "norepo.txt"))
@@ -504,7 +504,7 @@ Verify that an untracked file in an existing Git repository falls into
 ;; TRICKY TEST 1: The "No File on Disk" Hook Silencer
 ;; =========================================================================
 
-(ert-deftest test-org-history-hook--silently-ignores-non-file-buffers ()
+(ert-deftest org-history-test-hook--silently-ignores-non-file-buffers ()
   "Tricky: `org-history-hook-for-after-save' checks variable `buffer-file-name'.
 If a user runs `mt-mode' or saves a temporary buffer without an active
 backing file, the hook must exit immediately without triggering `y-or-n-p'."
@@ -523,7 +523,7 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
 ;; =========================================================================
 ;; TRICKY TEST 2: The `called-interactively-p` Advice Stack Trap
 ;; =========================================================================
-;; (ert-deftest test-org-history--show-dates-interactivity-stack-depth ()
+;; (ert-deftest org-history-test--show-dates-interactivity-stack-depth ()
 ;;   "Tricky: `called-interactively-p` with 'any checks the *entire* call stack.
 ;; If `org-cycle' is wrapped inside another non-interactive function wrapper
 ;; higher up, `called-interactively-p' might return non-nil anyway.
@@ -546,7 +546,7 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
 ;;         (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
 ;;         (should add-dates-called)))))
 
-(ert-deftest test-org-history--show-dates-interactivity-stack-depth ()
+(ert-deftest org-history-test--show-dates-interactivity-stack-depth ()
   (with-temp-buffer
     (org-mode)
     (insert "* Dummy Heading\n")
@@ -567,7 +567,7 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
 ;; FIXED TEST 4: Minor Mode Crash Protection in Out-Of-Scheme Buffers
 ;; =========================================================================
 
-(ert-deftest test-org-history-mode-enforces-derived-mode-p-boundary ()
+(ert-deftest org-history-test-mode-enforces-derived-mode-p-boundary ()
   "Tricky: `org-history-mode' contains an explicit safety guard:
 \(unless (derived-mode-p 'org-mode) (user-error ...))
 Verifies that activating this mode inside a non-Org buffer throws a
@@ -592,7 +592,7 @@ clean error and refuses to attach hooks."
 ;; OVERHAULED TEST 5: Cycle Hook Structural Mutation Under Stress
 ;; =========================================================================
 
-(ert-deftest test-org-history-cycle-hook--handles-malformed-and-custom-states ()
+(ert-deftest org-history-test-cycle-hook--handles-malformed-and-custom-states ()
   "Test.
 Robust: Verify `org-history--cycle-hook' behaves predictably when
  third-party extensions pass non-standard states or empty selections."
@@ -618,7 +618,7 @@ Robust: Verify `org-history--cycle-hook' behaves predictably when
 
 
 
-(ert-deftest test-org-history-hook--case2-true-filesystem-behavior ()
+(ert-deftest org-history-test-hook--case2-true-filesystem-behavior ()
   "Test.
 Robust: Verify Case 2's transparent commit vs prompt fork using actual
  filesystem directory structures instead of deep function overrides."
@@ -680,6 +680,6 @@ Robust: Verify Case 2's transparent commit vs prompt fork using actual
       (when (file-exists-p temp-dir)
         (delete-directory temp-dir t)))))
 
-(provide 'test-org-history)
+(provide 'org-history-test)
 
-;;; test-org-history.el ends here
+;;; org-history-test.el ends here
