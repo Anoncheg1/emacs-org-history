@@ -403,7 +403,7 @@ Use `default-directory'."
         ((memq func (default-value hook))
          :global)))
 
-;; -=-= hook: after-save
+;; -=-= git: commit and get last commit message
 (defun org-history--git-get-last-commit-message (&optional file)
   "Get any last Git commit message, or for FILE if provided.
 Returns the trimmed message string, or nil if an error occurs (e.g., no
@@ -441,6 +441,40 @@ Assumes tracking confirmation has already been validated and set."
         (vc-git-command nil 0 nil "commit" "-m" (format "org-history %s" current-date))
         (message "VC-Git: Created new date-stamped commit.")))))
 
+;; -=-= Attach-date
+(defun org-history-add-dates (&optional page-beg page-end)
+  "Collect line ranges for visible Org headings and apply dates separately.
+Optional arguments PAGE-BEG PAGE-END are position in current buffer."
+  (interactive)
+  (org-history-debug-print "org-history-add-dates %s %s" page-beg page-end)
+  ;; if not checked that commit exist error: gethash(4 nil) error in `org-history-outline--process-tasks'
+    (let (tasks)
+      (save-excursion
+        (goto-char (or page-beg (point-min)))
+        ;; Ensure we start at the first heading
+        (unless (org-at-heading-p)
+          (outline-next-heading))
+
+        ;; PHASE 1: Collect coordinates without touching Git or overlays
+        (while (and (not (eobp))
+                    (if page-end (< (point) page-end) t))
+          (unless (org-fold-core-get-folding-spec 'headline (point))
+            (let* ((heading-pos (point))
+                   (start (save-excursion (forward-line 1) (line-number-at-pos)))
+                   (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
+                   (real-start (min start end))
+                   (real-end (max start end)))
+              ;; Push a task tuple: (heading-marker start-line end-line)
+              ;; Using a marker ensures the position stays accurate even if the buffer shifts
+              (push (list (copy-marker heading-pos) real-start real-end) tasks)))
+          (outline-next-heading)))
+
+      ;; PHASE 2: Process the collected list
+      (when tasks
+        (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
+          (org-history-outline--process-tasks (nreverse tasks) commit-hash (unless (or page-beg page-end) t))))))
+
+;; -=-= hook: after-save
 (defun org-history-hook-for-after-save ()
   "Hook for `org-mode' buffers run after saving a file."
   (when (and (not (eq org-history-answer-was-given 'dont-track-file))
@@ -468,7 +502,7 @@ Assumes tracking confirmation has already been validated and set."
                   (org-history-git-init rel-file-name)
                   (if org-history-hide-dates
                       (message "org-history: dates was not shown because of org-history-hide-dates variable.")
-                    (org-history-outline-add-dates))
+                    (org-history-add-dates))
                   (setq org-history-answer-was-given 'track-file))
               (setq org-history-answer-was-given 'dont-track-file)))
 
@@ -491,7 +525,7 @@ Assumes tracking confirmation has already been validated and set."
             ;; 2. Execute updated commit routine (passes the message forward)
             (org-history--commit file-last-commit-message)
             ;; (unless org-history-hide-dates
-            ;;       (org-history-outline-add-dates)) ; too aggressive?
+            ;;       (org-history-add-dates)) ; too aggressive?
             )
 
            ;; Case 3: Git repo exists, but requires a new commit or initial tracking approval
@@ -525,7 +559,7 @@ Assumes tracking confirmation has already been validated and set."
               (org-history--commit file-last-commit-message)
               ;; Show dates
               (unless org-history-hide-dates
-                (org-history-outline-add-dates))))) ; too agressive?
+                (org-history-add-dates))))) ; too agressive?
           ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
           (vc-file-clearprops buffer-file-name))))))
 
@@ -552,7 +586,7 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
     (let ((vc-handled-backends '(Git)))
         (let ((start (save-excursion (forward-line 1) (point)))
               (end (save-excursion (org-end-of-subtree t t) (point))))
-          (org-history-outline-add-dates start end))
+          (org-history-add-dates start end))
         ;; (message "Interactively unfolded heading!")
         ))))
 
@@ -561,7 +595,7 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
 STATE may be `overview', `contents', or `all'."
   (when (eq state 'contents)
     (let ((vc-handled-backends '(Git)))
-      (org-history-outline-add-dates (point-min) (point-max)))))
+      (org-history-add-dates (point-min) (point-max)))))
 
 ;; -=-= interactive: hide dates
 (defun org-history-hide ()
@@ -583,7 +617,7 @@ STATE may be `overview', `contents', or `all'."
     (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
     (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
     (let ((vc-handled-backends '(Git)))
-      (org-history-outline-add-dates))))
+      (org-history-add-dates))))
 
 ;; -=-= minor mode
 ;;;###autoload
@@ -605,7 +639,7 @@ STATE may be `overview', `contents', or `all'."
                   (org-history--commit "")) ; add commit
               ;; else
               (setq org-history-answer-was-given 'dont-track-file)))
-          (org-history-outline-add-dates)) ; check last commit exist
+          (org-history-add-dates)) ; check last commit exist
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
         (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
         (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
