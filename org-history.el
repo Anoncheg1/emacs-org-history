@@ -233,7 +233,7 @@ FILE should be tracked by git."
     (when-let ((d (vc-git--run-command-string nil "show" "-s" "--format=%as")))
     (string-trim d))))
 
-
+;; NOT USED
 (defun org-history--vc-git-get-range-last-mod-date (file start end)
   "Return the last modification date (YYYY-MM-DD) for lines START to END in FILE.
 Returns nil if FILE is not in Git, range is invalid, or no commits exist.
@@ -492,7 +492,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
       ;; PHASE 2: Process the collected list
       (when tasks
         (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
-          (org-history-outline--process-tasks (nreverse tasks) commit-hash (unless (or page-beg page-end) t))))))
+          (org-history-outline--add-dates (nreverse tasks) commit-hash (unless (or page-beg page-end) t))))))
 
 ;; -=-= hook: after-save
 (defun org-history-hook-for-after-save ()
@@ -623,7 +623,7 @@ STATE may be `overview', `contents', or `all'."
   (interactive)
   (advice-remove 'org-cycle #'org-history--show-dates-at-unfold)
   (remove-hook 'org-cycle-hook #'org-history--cycle-hook t)
-  (org-history-outline-clear-all-org-date-overlays))
+  (org-history-outline-clear-all-date))
 
 (defun org-history-show ()
   "Show dates only."
@@ -677,7 +677,7 @@ STATE may be `overview', `contents', or `all'."
     (advice-remove 'org-cycle #'org-history--show-dates-at-unfold)
     (remove-hook 'after-save-hook #'org-history-hook-for-after-save t)
     (remove-hook 'org-cycle-hook #'org-history--cycle-hook t)
-    (org-history-outline-clear-all-org-date-overlays)
+    (org-history-outline-clear-all-date)
 
     (kill-local-variable 'org-history-answer-was-given)
     (message "org-history is disabled.")))

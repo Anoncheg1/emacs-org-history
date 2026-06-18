@@ -15,6 +15,7 @@ Show the last modification date for headers in Org-mode of GNU Emacs using git V
 - Auto-commit with --amend per day
 - Bother you with question yes-or-no one time only.
 - Accurate tracking of the current file is enabled via the .dir-locals.el file in the current directory.
+- No hanging and freezes for large files - we use cache and async request.
 
 * Configuration
 

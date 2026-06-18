@@ -680,6 +680,60 @@ Robust: Verify Case 2's transparent commit vs prompt fork using actual
       (when (file-exists-p temp-dir)
         (delete-directory temp-dir t)))))
 
-(provide 'org-history-test)
 
+
+;; -=-= Test: update-max-days
+
+(ert-deftest test-org-history-outline--update-max-days ()
+  "Test edge cases for the updated max days function."
+  (let ((org-history-outline-max-days 30)
+        (org-history-outline-min-days 5))
+    (with-temp-buffer
+      (org-mode)
+      ;; 1. Thought: Updated stub value to 739784 to match Emacs' native calculation for June 17, 2026.
+      (cl-letf (((symbol-function 'org-today) (lambda () 739784)))
+                ;; ((symbol-function 'org-history-debug-print) (lambda (&rest _args) nil)))
+
+        ;; Edge Case 1: Calculated days exceeds the original max (30).
+        ;; "2026-04-28" is absolute day 739734 (Delta: 739784 - 739734 = 50).
+        ;; Expected: Should become 30 (upper cap).
+        (org-history-outline--update-max-days "2026-04-28")
+        (should (= org-history-outline-max-days 30))
+
+        ;; Reset
+        (setq org-history-outline-max-days 30)
+
+        ;; Edge Case 2: Calculated days falls below the min floor (5).
+        ;; "2026-06-15" is absolute day 739782 (Delta: 739784 - 739782 = 2).
+        ;; Expected: Should floor exactly at min-days (5).
+        (org-history-outline--update-max-days "2026-06-15")
+        (should (= org-history-outline-max-days 5))
+
+        ;; Reset
+        (setq org-history-outline-max-days 30)
+
+        ;; Edge Case 3: Calculated days is exactly on the floor limit (5).
+        ;; "2026-06-12" is absolute day 739779 (Delta: 739784 - 739779 = 5).
+        ;; Expected: Should remain exactly 5.
+        (org-history-outline--update-max-days "2026-06-12")
+        (should (= org-history-outline-max-days 5))
+
+        ;; Reset
+        (setq org-history-outline-max-days 30)
+
+        ;; Edge Case 4: Future date / negative calculation.
+        ;; "2026-06-20" is absolute day 739787 (Delta: 739784 - 739787 = -3).
+        ;; Expected: Below the minimum floor, so it should clamp to min-days (5).
+        (org-history-outline--update-max-days "2026-06-20")
+        (should (= org-history-outline-max-days 5))
+
+        ;; Reset
+        (setq org-history-outline-max-days 30)
+
+        ;; Edge Case 5: Passing nil as file-oldest.
+        ;; Expected: Early return; max-days must remain completely untouched.
+        (org-history-outline--update-max-days nil)
+        (should (= org-history-outline-max-days 30))))))
+
+(provide 'org-history-test)
 ;;; org-history-test.el ends here

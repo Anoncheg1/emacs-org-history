@@ -48,7 +48,7 @@ Used to color range for dates, adjusted to oldest commit date in repo."
 (defcustom org-history-outline-min-days 90
   "Minimum number of days to keep in the outline history.
 This value must be an integer representing the day retention threshold.
-Used to calculate max-days range for colors of dates."
+Used to calculate `max-days' range for colors of dates."
   :group 'org-history
   :type 'integer
   :safe #'integerp)
@@ -60,7 +60,7 @@ Used to calculate max-days range for colors of dates."
   :safe #'integerp)
 
 ;; -=-= Attach overlay
-(defun org-history-outline--outline-attach-date (date-str)
+(defun org-history-outline--attach-date (date-str)
   "Attach overlay with date at the end header with color gradient.
 Cursors should be at header position.
 DATE-STR is in form of YYYY-MM-DD.
@@ -71,7 +71,7 @@ Automatically deletes older date overlays on the same headline when
   ;; (interactive "sEnter date (YYYY-MM-DD): ")
   (let* ((time-attr (condition-case nil
                         (date-to-time date-str)
-                      (error (user-error "Invalid date format! Use YYYY-MM-DD"))))
+                      (user-error "Invalid date format! Use YYYY-MM-DD")))
          ;; 1. Max out at 0 to avoid future negative date math bugs safely in one line
          (days-old (max 0 (floor (- (float-time) (float-time time-attr)) 86400)))
          ;; 2. Generate smooth vc-annotate aging color wheel
@@ -89,6 +89,8 @@ Automatically deletes older date overlays on the same headline when
          (current-line-length (- lend (line-beginning-position)))
          ;; Determine needed padding (fallback to at least 2 spaces if line is longer than target)
          (padding-needed (max 2 (- org-history-outline-date-column current-line-length)))
+         ;; Indetnaion for dates.
+         (padding-needed (+ padding-needed (org-outline-level)))
          ;; Generate a real string containing exactly that many spaces
          (calculated-spaces (make-string padding-needed ?\s)))
 
@@ -113,7 +115,7 @@ Automatically deletes older date overlays on the same headline when
       (overlay-put ov 'display (concat last-char calculated-spaces date-text)))))
 
 
-(defun org-history-outline-clear-all-org-date-overlays ()
+(defun org-history-outline-clear-all-date ()
   "Instantly remove all custom date overlays from the entire buffer."
   (interactive)
   (remove-overlays (point-min) (point-max) 'identity 'my-org-date)
@@ -121,54 +123,171 @@ Automatically deletes older date overlays on the same headline when
   (message "Successfully cleared all header date overlays."))
 
 ;; -=-= git blame
-(defun org-history-outline--vc-git-blame-file (file)
-  "Return a hash table mapping line numbers to last modification for FILE.
 
-An optimized version of `org-history--vc-git-get-range-last-mod-date'.
-Uses `default-directory'.
-
+(defun org-history-outline--process-git-blame-output ()
+  "Process result of git blame command from beginning of current buffer.
 The returned hash table uses `eql' as its test, where keys are line
 numbers (integers starting from 1) and values are plain strings representing
-the last modification date formatted as \"YYYY-MM-DD\".
+the last modification date formatted as \"YYYY-MM-DD\"."
+  (org-history-debug-print "org-history-outline--process-git-blame-output %s" (current-buffer))
+  (let ((line-dates (make-hash-table :test 'eql))
+        (line-num 1)
+        last-date-str)
+    (goto-char (point-min))
+    ;; Optimization 1: Anchor search to the current line to limit regex engine workload
+    (while (re-search-forward "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (line-end-position) t)
+      (let ((date-str (match-string-no-properties 1)))
+        ;; Optimization 2: String Deduplication to drastically cut GC pressure
+        (if (and last-date-str (string= date-str last-date-str))
+            (puthash line-num last-date-str line-dates)
+          (setq last-date-str date-str)
+          (puthash line-num date-str line-dates)))
+      (setq line-num (1+ line-num))
+      ;; Optimization 3: Move explicitly to the next line to avoid double-matching
+      ;; if a code comment accidentally contains a date string.
+      (forward-line 1))
+    line-dates))
 
-FILE should be relative to default-directory or full path.
+;; -=-= git-blame-file
+(defun org-history-outline--vc-git-blame-file-async (file callback)
+  "Run git blame on FILE asynchronously.
+Updates a progress reporter using a repeating timer every second.
+Inserts the result at the end of the current buffer upon completion.
+Interrupts the process and cancels the timer if the buffer is closed.
+If calling buffer not exist at finish message about it and return.
+Call CALLBACK with one argument of calling buffer if success."
+  (interactive (list (buffer-file-name)))
+  (unless file (user-error "Current buffer is not visiting a file"))
+  (org-history-debug-print "org-history-outline--vc-git-blame-file-async N1 %s" file)
+
+  (let* ((calling-buf (current-buffer))
+         (output-buf (generate-new-buffer " *git-blame-async*"))
+         (process-args (list "--no-pager" "blame" "-M" "-w" "--date=short" "-c" file))
+         (reporter (make-progress-reporter (format "Running git blame on %s..."
+                                                   (file-name-nondirectory file))))
+         proc
+         timer
+         cleanup-resources) ; Declare the variable first for closure safety
+
+    ;; 1. NATIVE CLEANUP FUNCTION (Stored in a lexical variable)
+    (setq cleanup-resources
+          (lambda ()
+            (when (timerp timer)
+              (cancel-timer timer)
+              (setq timer nil))
+            (progress-reporter-done reporter)
+            (when (buffer-live-p output-buf)
+              (kill-buffer output-buf))
+            ;; Remove the safety buffer-local hook to avoid dead code execution later
+            (when (buffer-live-p calling-buf)
+              (with-current-buffer calling-buf
+                (remove-hook 'kill-buffer-hook cleanup-resources t)))))
+
+    ;; 2. START THE REPEATING TIMER
+    (setq timer (run-with-timer
+                 1.0 0.7
+                 (lambda ()
+                   (progress-reporter-update reporter))))
+
+    ;; 3. START THE ASYNC PROCESS
+    (setq proc
+          (make-process
+           :name "git-blame-process"
+           :buffer output-buf
+           :command (cons vc-git-program process-args)
+           :connection-type 'pipe
+           :noquery t
+           :sentinel (lambda (process event)
+                       (let ((status (process-status process))
+                             (exit-code (process-exit-status process)))
+
+                         (when (memq status '(exit signal))
+                           (condition-case err
+                               (cond
+                                ;; Case A: Process was explicitly killed (e.g. by buffer closure)
+                                ((eq status 'signal)
+                                 (message "Git blame process interrupted."))
+
+                                ;; Case B: Target buffer died through other means
+                                ((not (buffer-live-p calling-buf))
+                                 (message "Git blame aborted: target buffer no longer exists."))
+
+                                ;; Case C: Git process failed with an error code
+                                ((not (zerop exit-code))
+                                 (let ((err-msg (if (buffer-live-p output-buf)
+                                                    (with-current-buffer output-buf (string-trim (buffer-string)))
+                                                    ;; (with-current-buffer output-buf (string-trim (buffer-string)))
+                                                  "Unknown Git error")))
+                                   (message "Git blame failed: %s" (if (string-empty-p err-msg) "Exit code non-zero" err-msg))))
+
+                                ;; Success Case: Output parsed out of the automatically filled output-buf
+                                (t
+                                 (unless (buffer-live-p output-buf)
+                                     (error "Sentitne output-buf is not alive"))
+                                 (when (buffer-live-p output-buf)
+                                       (with-current-buffer output-buf
+                                         (funcall callback calling-buf))))) ; CALLBACK!
+
+                             ;; Universal Guard Clause for the Sentinel Logic
+                             (error
+                              (message "Blame completion error: %s" (error-message-string err)))) ; condition-case
+
+                           ;; Clean up using the lexical native lambda function
+                           (funcall cleanup-resources))))))
+
+    ;; 4. BUFFER CLOSE INTERRUPT MECHANISM
+    (with-current-buffer calling-buf
+      (add-hook 'kill-buffer-hook
+                (lambda ()
+                  (when (process-live-p proc)
+                    (delete-process proc)) ; Triggers the sentinel with status 'signal
+                  (funcall cleanup-resources)) ; Kills the timer immediately
+                nil t)) ; Buffer-local hook
+
+    proc))
+
+(defun org-history-outline--git-blame-file-main (file &optional async-callback)
+  "Return a hash table mapping line numbers to last modification for FILE.
+
+Enhanced version of `org-history--vc-git-get-range-last-mod-date'.
+Uses `default-directory'.
+
+FILE should be relative to `default-directory' or full path.
 If FILE does not exist, is not registered under Git, or the underlying
 `git blame' command fails, an empty hash table is returned.
 
 To minimize memory allocation and prevent Garbage Collection (GC) pressure,
 consecutive lines that share identical modification dates point to the exact
 same string object in memory.  The search is strictly bounded line-by-line
-to prevent layout syntax errors from desynchronizing the line counter."
+to prevent layout syntax errors from desynchronizing the line counter.
+
+When ASYNC-CALLBACK is not provided,
+The returned hash table uses `eql' as its test, where keys are line
+numbers (integers starting from 1) and values are plain strings representing
+the last modification date formatted as \"YYYY-MM-DD\".
+
+When ASYNC-CALLBACK provided, return immediately and call
+ASYNC-CALLBACK in current buffer with rutern value above."
+  (org-history-debug-print "org-history-outline--git-blame-file-main N1 async=%s %s %s" (not (not async-callback)) file default-directory)
   (when (and (file-exists-p file)
              default-directory
              ;; (org-history--vc-git-get-last-commit-hash file) ; have commits?
              (vc-git-responsible-p default-directory))
-    (let ((line-dates (make-hash-table :test 'eql))
-          (line-num 1)
-          last-date-str)
-      (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
-        (with-temp-buffer
-          ;; -w Ignore whitespace when comparing the parent’s version and the child’s to find where the lines came from.
-          ;; -M[<num>] Git detects movement and attributes the line to the original date , rather than new commit.
-          ;; <num> is optional, but it is the lower bound on the
-          ;; number of alphanumeric characters that Git must detect as
-          ;; moving/copying within a file for it to associate those lines with the
-          ;; parent commit. The default value is
-          (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" file))
-            (goto-char (point-min))
-            ;; Optimization 1: Anchor search to the current line to limit regex engine workload
-            (while (re-search-forward "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" (line-end-position) t)
-              (let ((date-str (match-string-no-properties 1)))
-                ;; Optimization 2: String Deduplication to drastically cut GC pressure
-                (if (and last-date-str (string= date-str last-date-str))
-                    (puthash line-num last-date-str line-dates)
-                  (setq last-date-str date-str)
-                  (puthash line-num date-str line-dates)))
-              (setq line-num (1+ line-num))
-              ;; Optimization 3: Move explicitly to the next line to avoid double-matching
-              ;; if a code comment accidentally contains a date string.
-              (forward-line 1)))))
-      line-dates)))
+    (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
+      (if async-callback
+          (org-history-outline--vc-git-blame-file-async file
+                              (lambda (caller-buf)
+                                (let ((blame-table (org-history-outline--process-git-blame-output)))
+                                  ;; (org-history-debug-print "org-history-outline--git-blame-file-main N2 %s" (current-buffer) caller-buf blame-table)
+                                  ;; in current-buffer
+                                  (when (buffer-live-p caller-buf)
+                                    (with-current-buffer caller-buf
+                                      (funcall async-callback blame-table))))))
+          ;; else
+         (with-temp-buffer
+           (org-history-debug-print "org-history-outline--git-blame-file-main N3")
+           (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" file))
+             (org-history-outline--process-git-blame-output)))))))
 
 ;; -=-= Process-tasks
 (defvar-local org-history-outline--git-blame-cache nil
@@ -176,68 +295,134 @@ to prevent layout syntax errors from desynchronizing the line counter."
 (defvar-local org-history-outline--git-last-commit nil
   "Used to check if cache required to be updated.")
 
-(defun org-history-outline--process-tasks (tasks commit-hash &optional set-oldest)
+
+(defun org-history-outline--update-max-days (file-oldest)
+  "Calculate and update `org-history-outline-max-days' based on FILE-OLDEST.
+Clamps the calculated days between `org-history-outline-min-days' and the
+current `org-history-outline-max-days'."
+  (when file-oldest
+    (let ((calculated-days (- (org-today)
+                              (org-time-string-to-absolute file-oldest))))
+      ;; Restrict 'calculated-days' to a strict min and max range
+      (setq org-history-outline-max-days
+            (max org-history-outline-min-days
+                 (min calculated-days org-history-outline-max-days)))
+      (message "org-history: max-days set to %s days." org-history-outline-max-days))))
+
+
+(defun org-history-outline--process-tasks (tasks blame-table &optional set-oldest)
   "Process TASKS instantly by pre-caching Git blame data using native loops.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  set to oldest date during applying if it not older than
  `org-history-outline-max-days' orginal value.
-Argument COMMIT-HASH full hash of commit for current file."
-  (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" org-history-outline--git-last-commit)
-  ;; (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
-  (unless (string-equal commit-hash org-history-outline--git-last-commit)
-    (setq org-history-outline--git-blame-cache (org-history-outline--vc-git-blame-file buffer-file-name))
-    (setq org-history-outline--git-last-commit commit-hash))
-  (org-history-debug-print "org-history-outline--process-tasks N2")
+Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
+  (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" set-oldest (current-buffer))
+  ;; (org-history-debug-print "org-history-outline--process-tasks N11" tasks)
+
   ;; PHASE 1: Process ranges instantly using native loops
-  (when org-history-outline--git-blame-cache
-    (let* (file-oldest
-           max-days
-           (tasks-with-dates
-            (mapcar (lambda (task)
-                      (let ((marker (nth 0 task))
-                            (start  (nth 1 task))
-                            (end    (nth 2 task))
-                            (latest "1970-01-01"))
-                        ;; Native loop over the line range to find the newest date
-                        (let ((l start))
-                          (while (<= l end)
-                            (let ((l-date (gethash l org-history-outline--git-blame-cache)))
-                              (when (and l-date (string> l-date latest))
-                                (setq latest l-date)))
-                            (setq l (1+ l))))
-                        ;; Now update file-oldest with the oldest date found
-                        (when (and (not (string= latest "1970-01-01"))
-                                   (or (not file-oldest)
-                                       (string< latest file-oldest)))
-                          (setq file-oldest latest))
-                        ;; Return pair: (marker . date-str) or nil if unchanged from epoch
-                        (cons marker (unless (string= latest "1970-01-01") latest))))
-                    tasks)))
-      (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
+  (let* (file-oldest
+         (tasks-with-dates
+          (mapcar (lambda (task)
 
-      (when (and set-oldest file-oldest)
-        (setq max-days (- (org-today) (org-time-string-to-absolute file-oldest))) ; in repo
-        (setq org-history-outline-max-days max-days)
-        (org-history-debug-print "org-history-outline--process-tasks N3 %s" max-days (org-today) (org-time-string-to-absolute file-oldest))
-        ;; check boundaries
-        (if (> max-days org-history-outline-max-days)
-            (setq org-history-outline-max-days org-history-outline-max-days)
-          ;; else
-          (when (< max-days org-history-outline-min-days)
-            (setq org-history-outline-max-days org-history-outline-min-days)))
-        (message "org-history: max-days set to %s days." org-history-outline-max-days))
+                    (let ((marker (nth 0 task))
+                          ;; TODO check that marker equal to start and remove start.
+                          (start  (nth 1 task))
+                          (end    (nth 2 task))
+                          (latest "1970-01-01"))
 
-      ;; PHASE 2: Apply Overlays using native dolist
-      (dolist (cell tasks-with-dates)
-        (let ((marker (car cell))
-              (date-str (cdr cell)))
-          (when date-str
-            ;; (with-current-buffer (marker-buffer marker)
-            (save-excursion
-              (goto-char (marker-position marker))
-              (org-history-outline--outline-attach-date date-str)))
-          (set-marker marker nil))))))
+                      ;; Native loop over the line range to find the newest date
+                      (let ((l start))
+                        (while (<= l end)
+                          ;; 3. Thought: Combined the `gethash` lookup and string comparison directly to avoid deep nesting.
+                          (let ((l-date (gethash l blame-table)))
+                            (when (and l-date (string> l-date latest))
+                              (setq latest l-date)))
+                          (setq l (1+ l))))
 
+                      ;; Now update file-oldest with the oldest date found
+                      (when (and (not (string= latest "1970-01-01"))
+                                 (or (not file-oldest)
+                                     (string< latest file-oldest)))
+                        (setq file-oldest latest))
+
+                      ;; Return pair: (marker . date-str) or nil if unchanged from epoch
+                      (cons marker (unless (string= latest "1970-01-01") latest))))
+                  tasks)))
+
+    (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
+
+    ;; Adjust max-days for colour
+    (when (and set-oldest file-oldest)
+      (org-history-outline--update-max-days file-oldest))
+
+    (org-history-debug-print "org-history-outline--process-tasks N3")
+
+    ;; PHASE 2: Apply Overlays using native dolist
+    (dolist (cell tasks-with-dates)
+      (org-history-debug-print "org-history-outline--process-tasks N4 %s" cell)
+      ;; 5. Thought: Used `pcase-dolist` or direct destructuring for cleaner pair extraction, and removed commented-out code.
+      (let ((marker (car cell))
+            (date-str (cdr cell)))
+        (org-history-debug-print "org-history-outline--process-tasks N41 %s %s" marker date-str)
+        (when date-str
+          (save-excursion
+            (goto-char (marker-position marker))
+            (org-history-outline--attach-date date-str)))
+        (set-marker marker nil)))))
+
+(defun org-history-outline--add-dates (tasks commit-hash &optional set-oldest)
+  "Process TASKS instantly by pre-caching Git blame data using native loops.
+Called by Called by `org-history-add-dates'.
+Uses variable `buffer-file-name' function.
+If optional argument SET-OLDEST, `org-history-outline-max-days' will be
+ set to oldest date during applying if it not older than
+ `org-history-outline-max-days' orginal value.
+
+Argument COMMIT-HASH full hash of commit for current file, mandatory."
+  (org-history-debug-print "org-history-outline--add-dates N1 %s %s" set-oldest commit-hash org-history-outline--git-last-commit)
+  ;; todo, if call before finish.
+  ;; todo, if called too frequently
+  (let ((is-cache-update (not (string-equal commit-hash org-history-outline--git-last-commit))) ; no cache or update
+        (is-file-big (> (file-attribute-size (file-attributes (buffer-file-name)))
+                        (* 200 1024)))
+
+        (callback-for-blame-and-cache
+         (lambda (git-blame-table)
+           (org-history-debug-print "org-history-outline--add-dates N3async %s %s" set-oldest git-blame-table)
+           (setq org-history-outline--git-blame-cache git-blame-table)
+           (org-history-outline--process-tasks tasks git-blame-table set-oldest)
+           (setq org-history-outline--git-last-commit commit-hash))))
+
+    (org-history-debug-print "org-history-outline--add-dates N2 %s %s" is-cache-update is-file-big)
+    (if is-cache-update
+        (progn
+          (if is-file-big
+              ;; Case 1: async
+              (org-history-outline--git-blame-file-main (buffer-file-name) callback-for-blame-and-cache)
+            ;; else - Case 2: sync
+            (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
+            (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
+            (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))
+          (setq org-history-outline--git-last-commit commit-hash))
+      ;; else - ;; Case 3: use cache
+      (org-history-debug-print "org-history-outline--add-dates N5")
+      (unless org-history-outline--git-blame-cache
+        (error "Internal error org-history-outline--git-blame-cache should set" ))
+      (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))))
+
+  ;; (org-history-debug-print "org-history-outline--process-tasks N2")
+
+
+
+;; (defun org-history-outline--attach-several-dates (tasks-with-dates)
+;;   (dolist (cell tasks-with-dates)
+;;     (let ((marker (car cell))
+;;           (date-str (cdr cell)))
+;;       (when date-str
+;;         (save-excursion
+;;           (goto-char (marker-position marker))
+;;           (org-history-outline--attach-single-date date-str)))
+;;       (set-marker marker nil))))
 
 ;;; provide
 
