@@ -1,5 +1,6 @@
 #!/bin/bash
 emacs -Q --batch --no-site-file -l org-history-debug.el -l org-history-outline.el -l org-history.el -l org-history-test.el -f ert-run-tests-batch-and-exit || exit 1
+emacs -Q --batch --no-site-file -l org-history-debug.el -l org-history-outline.el -l org-history.el -l org-history-outline-test.el -f ert-run-tests-batch-and-exit || exit 1
 # Single:
 # emacs -Q --batch --no-site-file \
 #   -l org-history-debug.el \

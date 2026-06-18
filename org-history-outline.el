@@ -149,6 +149,9 @@ the last modification date formatted as \"YYYY-MM-DD\"."
     line-dates))
 
 ;; -=-= git-blame-file
+(defvar-local org-history-outline--blame-proc nil
+  "Tracks the active git blame process for the current buffer.")
+
 (defun org-history-outline--vc-git-blame-file-async (file callback)
   "Run git blame on FILE asynchronously.
 Updates a progress reporter using a repeating timer every second.
@@ -167,6 +170,7 @@ Call CALLBACK with one argument of calling buffer if success."
                                                    (file-name-nondirectory file))))
          proc
          timer
+         kill-hook
          cleanup-resources) ; Declare the variable first for closure safety
 
     ;; 1. NATIVE CLEANUP FUNCTION (Stored in a lexical variable)
@@ -181,8 +185,12 @@ Call CALLBACK with one argument of calling buffer if success."
             ;; Remove the safety buffer-local hook to avoid dead code execution later
             (when (buffer-live-p calling-buf)
               (with-current-buffer calling-buf
-                (remove-hook 'kill-buffer-hook cleanup-resources t)))))
+                (remove-hook 'kill-buffer-hook kill-hook t)))))
 
+    (setq kill-hook (lambda ()
+                      (when (process-live-p proc)
+                        (delete-process proc)) ; Triggers the sentinel with status 'signal
+                      (funcall cleanup-resources))) ; Kills the timer immediately
     ;; 2. START THE REPEATING TIMER
     (setq timer (run-with-timer
                  1.0 0.7
@@ -197,7 +205,7 @@ Call CALLBACK with one argument of calling buffer if success."
            :command (cons vc-git-program process-args)
            :connection-type 'pipe
            :noquery t
-           :sentinel (lambda (process event)
+           :sentinel (lambda (process _event)
                        (let ((status (process-status process))
                              (exit-code (process-exit-status process)))
 
@@ -238,13 +246,11 @@ Call CALLBACK with one argument of calling buffer if success."
     ;; 4. BUFFER CLOSE INTERRUPT MECHANISM
     (with-current-buffer calling-buf
       (add-hook 'kill-buffer-hook
-                (lambda ()
-                  (when (process-live-p proc)
-                    (delete-process proc)) ; Triggers the sentinel with status 'signal
-                  (funcall cleanup-resources)) ; Kills the timer immediately
+                kill-hook
                 nil t)) ; Buffer-local hook
 
     proc))
+
 
 (defun org-history-outline--git-blame-file-main (file &optional async-callback)
   "Return a hash table mapping line numbers to last modification for FILE.
@@ -268,21 +274,23 @@ the last modification date formatted as \"YYYY-MM-DD\".
 
 When ASYNC-CALLBACK provided, return immediately and call
 ASYNC-CALLBACK in current buffer with rutern value above."
-  (org-history-debug-print "org-history-outline--git-blame-file-main N1 async=%s %s %s" (not (not async-callback)) file default-directory)
+  (org-history-debug-print "org-history-outline--git-blame-file-main N1 async=%s %s %s" async-callback file default-directory)
   (when (and (file-exists-p file)
              default-directory
              ;; (org-history--vc-git-get-last-commit-hash file) ; have commits?
              (vc-git-responsible-p default-directory))
     (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
       (if async-callback
-          (org-history-outline--vc-git-blame-file-async file
-                              (lambda (caller-buf)
-                                (let ((blame-table (org-history-outline--process-git-blame-output)))
-                                  ;; (org-history-debug-print "org-history-outline--git-blame-file-main N2 %s" (current-buffer) caller-buf blame-table)
-                                  ;; in current-buffer
-                                  (when (buffer-live-p caller-buf)
-                                    (with-current-buffer caller-buf
-                                      (funcall async-callback blame-table))))))
+          (unless (process-live-p org-history-outline--blame-proc)
+            (setq org-history-outline--blame-proc
+                  (org-history-outline--vc-git-blame-file-async file
+                                                                (lambda (caller-buf)
+                                                                  (let ((blame-table (org-history-outline--process-git-blame-output)))
+                                                                    ;; (org-history-debug-print "org-history-outline--git-blame-file-main N2 %s" (current-buffer) caller-buf blame-table)
+                                                                    ;; in current-buffer
+                                                                    (when (buffer-live-p caller-buf)
+                                                                      (with-current-buffer caller-buf
+                                                                        (funcall async-callback blame-table))))))))
           ;; else
          (with-temp-buffer
            (org-history-debug-print "org-history-outline--git-blame-file-main N3")
@@ -317,7 +325,6 @@ If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  `org-history-outline-max-days' orginal value.
 Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
   (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" set-oldest (current-buffer))
-  ;; (org-history-debug-print "org-history-outline--process-tasks N11" tasks)
 
   ;; PHASE 1: Process ranges instantly using native loops
   (let* (file-oldest
@@ -359,11 +366,11 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
 
     ;; PHASE 2: Apply Overlays using native dolist
     (dolist (cell tasks-with-dates)
-      (org-history-debug-print "org-history-outline--process-tasks N4 %s" cell)
+      ;; (org-history-debug-print "org-history-outline--process-tasks N4 %s" cell)
       ;; 5. Thought: Used `pcase-dolist` or direct destructuring for cleaner pair extraction, and removed commented-out code.
       (let ((marker (car cell))
             (date-str (cdr cell)))
-        (org-history-debug-print "org-history-outline--process-tasks N41 %s %s" marker date-str)
+        ;; (org-history-debug-print "org-history-outline--process-tasks N41 %s %s" marker date-str)
         (when date-str
           (save-excursion
             (goto-char (marker-position marker))
@@ -388,7 +395,7 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
 
         (callback-for-blame-and-cache
          (lambda (git-blame-table)
-           (org-history-debug-print "org-history-outline--add-dates N3async %s %s" set-oldest git-blame-table)
+           (org-history-debug-print "org-history-outline--add-dates N3async %s" set-oldest)
            (setq org-history-outline--git-blame-cache git-blame-table)
            (org-history-outline--process-tasks tasks git-blame-table set-oldest)
            (setq org-history-outline--git-last-commit commit-hash))))
@@ -398,7 +405,12 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
         (progn
           (if is-file-big
               ;; Case 1: async
-              (org-history-outline--git-blame-file-main (buffer-file-name) callback-for-blame-and-cache)
+              (progn
+                ;; Update it from cache fast
+                (when org-history-outline--git-blame-cache
+                  (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))
+                ;; then request update
+                (org-history-outline--git-blame-file-main (buffer-file-name) callback-for-blame-and-cache))
             ;; else - Case 2: sync
             (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
             (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
@@ -410,19 +422,6 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
         (error "Internal error org-history-outline--git-blame-cache should set" ))
       (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))))
 
-  ;; (org-history-debug-print "org-history-outline--process-tasks N2")
-
-
-
-;; (defun org-history-outline--attach-several-dates (tasks-with-dates)
-;;   (dolist (cell tasks-with-dates)
-;;     (let ((marker (car cell))
-;;           (date-str (cdr cell)))
-;;       (when date-str
-;;         (save-excursion
-;;           (goto-char (marker-position marker))
-;;           (org-history-outline--attach-single-date date-str)))
-;;       (set-marker marker nil))))
 
 ;;; provide
 
