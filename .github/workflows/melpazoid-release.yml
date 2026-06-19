@@ -55,7 +55,7 @@ jobs:
         env:
           LOCAL_REPO: ${{ github.workspace }}
           # RECIPE is your recipe as written for MELPA:
-          RECIPE: (cui :fetcher github :repo "Anoncheg1/emacs-org-history")
+          RECIPE: (org-history :fetcher github :repo "Anoncheg1/emacs-org-history")
           # set this to false (or remove it) if the package isn't on MELPA:
           EXIST_OK: false
         run: |
