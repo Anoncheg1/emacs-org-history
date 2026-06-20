@@ -4,7 +4,7 @@
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
 ;; Keywords: org, outline, vc
 ;; URL: https://codeberg.org/Anoncheg/emacs-org-history
-;; Version: 0.2
+;; Version: 0.3
 ;; Created: 30 may 2026
 ;; Package-Requires: ((emacs "29.1"))
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
@@ -549,7 +549,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
             (when (and (not before-answer)
                        (eq org-history-answer-was-given 'track-file))
               (org-history-dir-locals-append))
-            ;; 2. Execute updated commit routine (passes the message forward)
+            ;; 2. Execute updated commit routine (passes the message forward) - always
             (org-history--commit file-last-commit-message)
             ;; (unless org-history-hide-dates
             ;;       (org-history-add-dates)) ; too aggressive?
@@ -572,8 +572,6 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
                        (eq org-history-answer-was-given 'track-file))
               ;; Create  .dir-locals.el
               (org-history-dir-locals-append))
-
-
 
               ;; 3. if tracking do commit
             (when (eq org-history-answer-was-given 'track-file)

@@ -4,7 +4,6 @@
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
 ;; URL: https://codeberg.org/Anoncheg/emacs-org-history
-;; Version: 0.2
 
 ;;; License
 
@@ -54,6 +53,15 @@ Used to calculate `max-days' range for colors of dates."
 
 (defcustom org-history-outline-date-column 60
   "Column to put date at."
+  :group 'org-history
+  :type 'integer
+  :safe #'integerp)
+
+(defcustom org-history-outline-sync-max-file-size (* 200 1024)
+  "Max file size when we simple waiting without asynchronous call.
+This prevent freezing of Emacs for large files.
+If file size is large than this value we run
+ asynchorouse process to get git blame for file."
   :group 'org-history
   :type 'integer
   :safe #'integerp)
@@ -390,7 +398,7 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
   ;; todo, if called too frequently
   (let ((is-cache-update (not (string-equal commit-hash org-history-outline--git-last-commit))) ; no cache or update
         (is-file-big (> (file-attribute-size (file-attributes (buffer-file-name)))
-                        (* 200 1024)))
+                        org-history-outline-sync-max-file-size))
 
         (callback-for-blame-and-cache
          (lambda (git-blame-table)
