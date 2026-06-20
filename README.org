@@ -35,7 +35,6 @@ If you dont like using .dir-locals.el, you may disable this feature in ~/.emacs:
 
 * Screenshot
 
-[[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png]]
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
 
 * Emacs built-in alternative

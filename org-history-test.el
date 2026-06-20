@@ -520,31 +520,6 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
         ;; The hook must short-circuit on: (when (and ... buffer-file-name ... ))
         (should-not prompt-triggered)))))
 
-;; =========================================================================
-;; TRICKY TEST 2: The `called-interactively-p` Advice Stack Trap
-;; =========================================================================
-;; (ert-deftest org-history-test--show-dates-interactivity-stack-depth ()
-;;   "Tricky: `called-interactively-p` with 'any checks the *entire* call stack.
-;; If `org-cycle' is wrapped inside another non-interactive function wrapper
-;; higher up, `called-interactively-p' might return non-nil anyway.
-;; This test ensures the advice cleanly manages this behavior."
-;;   (let ((add-dates-called nil)
-;;         (mock-orig-fun (lambda (&rest _) nil)))
-
-;;     (cl-letf (((symbol-function 'org-at-heading-p) (lambda () t))
-;;               ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil)) ;; Unfolded
-;;               ((symbol-function 'org-history-add-dates) (lambda (&rest _) (setq add-dates-called t)))
-;;               (org-history-mode t))
-
-;;       ;; Simulate an execution where an interactive command called a helper,
-;;       ;; which then triggered the advice loop.
-;;       (cl-letf (((symbol-function 'called-interactively-p)
-;;                  (lambda (kind)
-;;                    ;; If your advice checks 'any, it risks catching background loops.
-;;                    (if (eq kind 'any) t nil))))
-
-;;         (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
-;;         (should add-dates-called)))))
 
 (ert-deftest org-history-test--show-dates-interactivity-stack-depth ()
   (with-temp-buffer
