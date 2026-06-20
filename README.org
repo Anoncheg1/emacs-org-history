@@ -5,7 +5,7 @@
 
 * org-history
 
-*Version: 0.2*
+*Version: 0.3*
 
 Show the last modification date for headers in Org-mode of GNU Emacs using git VCS and auto-commit.
 
@@ -25,6 +25,9 @@ Show the last modification date for headers in Org-mode of GNU Emacs using git V
 #+end_src
 
 Activation: ~M-x org-history-mode~
+
+If you dont like using .dir-locals.el, you may disable this feature in ~/.emacs:
+(setopt org-history-dir-locals-flag nil)
 
 * Customization
 

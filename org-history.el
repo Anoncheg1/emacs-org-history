@@ -4,7 +4,7 @@
 ;; Author: <github.com/Anoncheg1,codeberg.org/Anoncheg>
 ;; Keywords: org, outline, vc
 ;; URL: https://codeberg.org/Anoncheg/emacs-org-history
-;; Version: 0.2
+;; Version: 0.3
 ;; Created: 30 may 2026
 ;; Package-Requires: ((emacs "29.1"))
 ;; SPDX-License-Identifier: AGPL-3.0-or-later
@@ -41,6 +41,11 @@
 
 ;; (add-to-list 'load-path "/path-to/emacs-org-history")
 ;; (require 'org-history)
+
+
+;; If you dont like using .dir-locals.el, you may disable this feature
+;;  in ~/.emacs:
+;; (setopt org-history-dir-locals-flag nil)
 
 ;;; Activation:
 
@@ -134,19 +139,18 @@ Ignores: compiled files, backups, and lock files."
   :type '(repeat string)
   :group 'org-history)
 
-(defcustom org-history-hide-dates nil
+(defcustom org-history-hide-dates-flag nil
   "Non-nil means to hide dates after 2 seconds of mode activation.
 Timer is used to observe File-local variables, because it happen after
  mode loading from dir-locals."
   :type 'boolean
   :group 'org-history)
 
-;; (defcustom org-history-dont-use-dir-locals nil
-;;   "Non-nil means to hide dates after 2 seconds of mode activation.
-;; Timer is used to observe File-local variables, because it happen after
-;;  mode loading from dir-locals."
-;;   :type 'boolean
-;;   :group 'org-history)
+(defcustom org-history-dir-locals-flag t
+  "Non-nil means save autostart of org-history mode in dir-locals.el.
+It is a file in .git root folder of current file."
+  :type 'boolean
+  :group 'org-history)
 
 ;; ;; NOT USED
 ;; (defcustom org-history-directories nil
@@ -386,7 +390,8 @@ Use `default-directory'."
                         ))
                     default-directory)))
       ;; Create  .dir-locals.el
-      (org-history-dir-locals-append)
+      (when org-history-dir-locals-flag
+        (org-history-dir-locals-append))
 
       ;; Create  .gitignore
       (when (not (file-exists-p ".gitignore"))
@@ -527,8 +532,8 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
             (if (y-or-n-p (format "org-history: Do git init and activate auto-commit for this file in\n%s? " default-directory))
                 (progn
                   (org-history-git-init rel-file-name)
-                  (if org-history-hide-dates
-                      (message "org-history: dates was not shown because of org-history-hide-dates variable.")
+                  (if org-history-hide-dates-flag
+                      (message "org-history: dates was not shown because of org-history-hide-dates-flag variable.")
                     (org-history-add-dates))
                   (setq org-history-answer-was-given 'track-file))
               (setq org-history-answer-was-given 'dont-track-file)))
@@ -546,12 +551,13 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
               ;; else - no need to ask
               (setq org-history-answer-was-given 'track-file))
             ;; Create  .dir-locals.el
-            (when (and (not before-answer)
+            (when (and org-history-dir-locals-flag
+                       (not before-answer)
                        (eq org-history-answer-was-given 'track-file))
               (org-history-dir-locals-append))
-            ;; 2. Execute updated commit routine (passes the message forward)
+            ;; 2. Execute updated commit routine (passes the message forward) - always
             (org-history--commit file-last-commit-message)
-            ;; (unless org-history-hide-dates
+            ;; (unless org-history-hide-dates-flag
             ;;       (org-history-add-dates)) ; too aggressive?
             )
 
@@ -568,12 +574,11 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
               ;; else - no need to ask
               (setq org-history-answer-was-given 'track-file))
             ;; 2. do init if was not asked before
-            (when (and (not before-answer)
+            (when (and org-history-dir-locals-flag
+                       (not before-answer)
                        (eq org-history-answer-was-given 'track-file))
               ;; Create  .dir-locals.el
               (org-history-dir-locals-append))
-
-
 
               ;; 3. if tracking do commit
             (when (eq org-history-answer-was-given 'track-file)
@@ -585,7 +590,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
               ;; Passes the message file text (or nil) to handle new commit branches
               (org-history--commit file-last-commit-message)
               ;; Show dates
-              (unless org-history-hide-dates
+              (unless org-history-hide-dates-flag
                 (org-history-add-dates))))) ; too agressive?
           ;; Synchronize cache once more post-execution for UI updates (e.g., modeline)
           (vc-file-clearprops buffer-file-name))))))
@@ -677,7 +682,7 @@ STATE may be `overview', `contents', or `all'."
              ;; Because of lexical binding, orig-buffer is automatically captured
              (if (buffer-live-p orig-buffer)
                  (with-current-buffer orig-buffer
-                   (when org-history-hide-dates
+                   (when org-history-hide-dates-flag
                      (org-history-hide))))))))
 
     ;; else - off
