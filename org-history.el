@@ -141,6 +141,13 @@ Timer is used to observe File-local variables, because it happen after
   :type 'boolean
   :group 'org-history)
 
+;; (defcustom org-history-dont-use-dir-locals nil
+;;   "Non-nil means to hide dates after 2 seconds of mode activation.
+;; Timer is used to observe File-local variables, because it happen after
+;;  mode loading from dir-locals."
+;;   :type 'boolean
+;;   :group 'org-history)
+
 ;; ;; NOT USED
 ;; (defcustom org-history-directories nil
 ;;   "List of directories that processed without questions.
