@@ -355,6 +355,9 @@ Return .dir-locals.el file path if added."
       (with-temp-file file-path
         (let (print-level print-length)
           (pp config (current-buffer))))
+      ;; track it also
+      (org-history--vc-add-file first-f 'Git)
+
       (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
       file-path)))
 
@@ -454,6 +457,7 @@ Returns the trimmed message string, or nil if an error occurs (e.g., no
   "Execute the commit or amend routines based on LAST-COMMIT-MESSAGE.
 Uses variable `buffer-file-name'.
 Assumes tracking confirmation has already been validated and set."
+  (org-history-debug-print "org-history--commit %s" last-commit-message)
   (let* ((current-date (format-time-string "%F")) ; Y-%m-%d
          ;; If last-commit-message wasn't provided, fetch it using buffer-file-name
          (msg (or last-commit-message
@@ -610,9 +614,10 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
 
     ;; 3. Now perform your post-execution visibility checks safely
   (when (and (bound-and-true-p org-history-mode)
-             interactive-call			; 1. Only run if called interactively
-             (org-at-heading-p)		; 2. Only run if cursor is on a heading
-             (not (save-excursion		; 3. Ensure heading is currently open
+             interactive-call				; 1. Only run if called interactively
+             (org-at-heading-p)			; 2. Only run if cursor is on a heading
+             org-history-outline--git-blame-cache	; 3. Only run if git blame was retrieved (especilly with async call)
+             (not (save-excursion			; 4. Ensure heading is currently open
                     (end-of-line)
                     (org-fold-folded-p nil 'outline)))) ; 'headline ?
     (let ((vc-handled-backends '(Git)))
