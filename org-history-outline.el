@@ -157,7 +157,8 @@ the last modification date formatted as \"YYYY-MM-DD\"."
 
 ;; -=-= git-blame-file
 (defvar-local org-history-outline--blame-proc nil
-  "Tracks the active git blame process for the current buffer.")
+  "Tracks the active git blame process for the current buffer.
+Set in function `org-history-outline--git-blame-file-main'")
 
 (defun org-history-outline--vc-git-blame-file-async (file callback)
   "Run git blame on FILE asynchronously.
@@ -261,6 +262,9 @@ Call CALLBACK with one argument of calling buffer if success."
 
 (defun org-history-outline--git-blame-file-main (file &optional async-callback)
   "Return a hash table mapping line numbers to last modification for FILE.
+
+Called from `org-history-outline--add-dates' with callback to save
+ result in cache at upper org-history.el
 
 Enhanced version of `org-history--vc-git-get-range-last-mod-date'.
 Uses `default-directory'.
@@ -421,8 +425,8 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
             ;; else - Case 2: sync
             (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
             (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
-            (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))
-          (setq org-history-outline--git-last-commit commit-hash))
+            (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache)
+            (setq org-history-outline--git-last-commit commit-hash)))
       ;; else - ;; Case 3: use cache
       (org-history-debug-print "org-history-outline--add-dates N5")
       (unless org-history-outline--git-blame-cache

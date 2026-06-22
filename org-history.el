@@ -321,7 +321,8 @@ Use `default-directory' and variable"
 
 (defun org-history-dir-locals-append ()
   "Add an `org-history-mode' activation to TARGET-DIR/.dir-locals.el.
-Uses variable `buffer-file-name' and `default-directory' variables.
+Uses variable `buffer-file-name'. `default-directory' variable should
+ set to git root.
 Safely merges with existing mode settings without overwriting rules for
  other files.
 Return .dir-locals.el file path if added."
@@ -356,7 +357,8 @@ Return .dir-locals.el file path if added."
         (let (print-level print-length)
           (pp config (current-buffer))))
       ;; track it also
-      (org-history--vc-add-file first-f 'Git)
+      (when (vc-root-dir)
+        (org-history--vc-add-file file-path 'Git))
 
       (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
       file-path)))
@@ -613,15 +615,30 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
     (apply orig-fun args)
 
     ;; 3. Now perform your post-execution visibility checks safely
-  (when (and (bound-and-true-p org-history-mode)
-             interactive-call				; 1. Only run if called interactively
-             (org-at-heading-p)			; 2. Only run if cursor is on a heading
-             org-history-outline--git-blame-cache	; 3. Only run if git blame was retrieved (especilly with async call)
-             (not (save-excursion			; 4. Ensure heading is currently open
-                    (end-of-line)
-                    (org-fold-folded-p nil 'outline)))) ; 'headline ?
-    (let ((vc-handled-backends '(Git)))
-        (let ((start (save-excursion (forward-line 1) (point)))
+    ;; (bound-and-true-p org-history-mode)
+    (org-history-debug-print "org-history--show-dates-at-unfold N1 %s %s %s"
+                             (bound-and-true-p org-history-mode)
+                             (org-at-heading-p)
+                             interactive-call)
+
+    ;; Special case for UFO usage of this hook without minor mode.
+    ;; (when
+    ;;   (org-history-debug-print "org-history--show-dates-at-unfold N2")
+    ;;   (org-history-add-dates start end))
+
+    (when (and
+               interactive-call			; 1. Only run if called interactively
+               (org-at-heading-p)			; 2. Only run if cursor is on a heading
+               (not (save-excursion			; 3. Ensure heading is currently open
+                      (end-of-line)
+                      (org-fold-folded-p nil 'outline))) ; 4. ; Unfolding? 'headline
+
+               (or (and (bound-and-true-p org-history-mode)
+                        org-history-outline--git-blame-cache)	; 3. Only run if git blame was retrieved (especilly with async call)
+                   (not (bound-and-true-p org-history-mode))))
+      (org-history-debug-print "org-history--show-dates-at-unfold N2")
+      (let ((vc-handled-backends '(Git)))
+        (let ((start (point)) ;; (save-excursion (forward-line 1) (point))) ; with root header too.
               (end (save-excursion (org-end-of-subtree t t) (point))))
           (org-history-add-dates start end))
         ;; (message "Interactively unfolded heading!")
@@ -678,8 +695,8 @@ STATE may be `overview', `contents', or `all'."
               (setq org-history-answer-was-given 'dont-track-file)))
           (org-history-add-dates)) ; check last commit exist
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-        (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
-        (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t)
+        (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t))) ; cycle one header
+        (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t) ; global cycling whole buffer
         (let ((orig-buffer (current-buffer))) ; lexical binding
           (run-with-timer
            2.5 nil ; we use timer to to be able to see File-Local variables

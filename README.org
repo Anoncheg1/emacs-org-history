@@ -37,6 +37,10 @@ If you dont like using .dir-locals.el, you may disable this feature in ~/.emacs:
 
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
 
+* Using without minor mode for one header at unfolding
+You can use it to show date only for specific date. For that add this line to your ~/.emacs file:
+: (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
+
 * Emacs built-in alternative
 
 To see history for every line in buffer use Built-in Emacs command:
