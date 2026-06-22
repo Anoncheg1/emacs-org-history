@@ -147,7 +147,7 @@ Timer is used to observe File-local variables, because it happen after
   :group 'org-history)
 
 (defcustom org-history-dir-locals-flag t
-  "Non-nil means save autostart of org-history mode in dir-locals.el.
+  "Non-nil means save autostart of `org-history' mode in dir-locals.el.
 It is a file in .git root folder of current file."
   :type 'boolean
   :group 'org-history)
@@ -321,7 +321,7 @@ Use `default-directory' and variable"
 
 (defun org-history-dir-locals-append ()
   "Add an `org-history-mode' activation to TARGET-DIR/.dir-locals.el.
-Uses variable `buffer-file-name'. `default-directory' variable should
+Uses variable `buffer-file-name'.  `default-directory' variable should
  set to git root.
 Safely merges with existing mode settings without overwriting rules for
  other files.
