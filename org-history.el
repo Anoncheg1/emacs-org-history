@@ -497,14 +497,15 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
         (while (and (not (eobp))
                     (if page-end (< (point) page-end) t))
           (unless (org-fold-core-get-folding-spec 'headline (point))
-            (let* ((heading-pos (point))
-                   (start (save-excursion (forward-line 1) (line-number-at-pos)))
-                   (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
-                   (real-start (min start end))
-                   (real-end (max start end)))
+            ;; (let* ((heading-pos (1+ (point)))
+            ;;        ;; (start (save-excursion (forward-line 1) (line-number-at-pos)))
+            ;;        ;; (end (save-excursion (org-end-of-subtree t t) (line-number-at-pos)))
+            ;;        ;; (real-start (min start end))
+            ;;        ;; (real-end (max start end))
+            ;;        )
               ;; Push a task tuple: (heading-marker start-line end-line)
               ;; Using a marker ensures the position stays accurate even if the buffer shifts
-              (push (list (copy-marker heading-pos) real-start real-end) tasks)))
+            (push (copy-marker (1+ (point))) tasks)) ; position of begining of heading +1
           (outline-next-heading)))
 
       ;; PHASE 2: Process the collected list
@@ -517,7 +518,8 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
   "Hook for `org-mode' buffers run after saving a file."
   (when (and (not (eq org-history-answer-was-given 'dont-track-file))
              buffer-file-name
-             default-directory)
+             default-directory
+             (buffer-modified-p)) ; this just in case. in case of nothing to save raise error at attempt to commit if no diff.
     (let ((before-answer org-history-answer-was-given)
           (git-root (vc-git-root buffer-file-name))
           (is-file-tracked (eq 'Git (vc-backend buffer-file-name)))
@@ -634,11 +636,11 @@ Argument ORIG-FUN is `org-cycle' and its ARGS."
                       (org-fold-folded-p nil 'outline))) ; 4. ; Unfolding? 'headline
 
                (or (and (bound-and-true-p org-history-mode)
-                        org-history-outline--git-blame-cache)	; 3. Only run if git blame was retrieved (especilly with async call)
+                        org-history-outline--git-blame-cache)	; 5. Only run if git blame was retrieved (especilly with async call) or without mode active
                    (not (bound-and-true-p org-history-mode))))
       (org-history-debug-print "org-history--show-dates-at-unfold N2")
       (let ((vc-handled-backends '(Git)))
-        (let ((start (point)) ;; (save-excursion (forward-line 1) (point))) ; with root header too.
+        (let ((start (line-beginning-position)) ;; (save-excursion (forward-line 1) (point))) ; with root header too.
               (end (save-excursion (org-end-of-subtree t t) (point))))
           (org-history-add-dates start end))
         ;; (message "Interactively unfolded heading!")
@@ -714,6 +716,8 @@ STATE may be `overview', `contents', or `all'."
     (org-history-outline-clear-all-date)
 
     (kill-local-variable 'org-history-answer-was-given)
+    (kill-local-variable 'org-history-outline--git-blame-cache)
+    (kill-local-variable 'org-history-outline--git-last-commit)
     (message "org-history is disabled.")))
 
 (defalias 'org-history #'org-history-mode)

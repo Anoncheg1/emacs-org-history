@@ -310,7 +310,10 @@ ASYNC-CALLBACK in current buffer with rutern value above."
 
 ;; -=-= Process-tasks
 (defvar-local org-history-outline--git-blame-cache nil
-  "Cache for optimization: Hastable - Key is line-num, value is date-str.")
+  "Cache for optimization: Hastable - Key is line-num, value is date-str.
+Set to return value of function
+ `org-history-outline--git-blame-file-main' in function
+ `org-history-outline--add-dates'.")
 (defvar-local org-history-outline--git-last-commit nil
   "Used to check if cache required to be updated.")
 
@@ -331,22 +334,29 @@ current `org-history-outline-max-days'."
 
 (defun org-history-outline--process-tasks (tasks blame-table &optional set-oldest)
   "Process TASKS instantly by pre-caching Git blame data using native loops.
+Should be called in target buffer.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  set to oldest date during applying if it not older than
  `org-history-outline-max-days' orginal value.
 Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
   (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" set-oldest (current-buffer))
+  (org-history-debug-print "org-history-outline--process-tasks N11" tasks)
 
   ;; PHASE 1: Process ranges instantly using native loops
   (let* (file-oldest
          (tasks-with-dates
           (mapcar (lambda (task)
 
-                    (let ((marker (nth 0 task))
+                    (let* ((marker task)
                           ;; TODO check that marker equal to start and remove start.
-                          (start  (nth 1 task))
-                          (end    (nth 2 task))
-                          (latest "1970-01-01"))
+                           (header-pos (1- (marker-position  marker)))
+                           (latest "1970-01-01")
+                           start end)
+                      (save-excursion
+                        (goto-char header-pos)
+                        (setq start (line-number-at-pos))
+                        (org-end-of-subtree t t)
+                        (setq end (line-number-at-pos)))
 
                       ;; Native loop over the line range to find the newest date
                       (let ((l start))
@@ -364,7 +374,7 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
                         (setq file-oldest latest))
 
                       ;; Return pair: (marker . date-str) or nil if unchanged from epoch
-                      (cons marker (unless (string= latest "1970-01-01") latest))))
+                      (cons header-pos (unless (string= latest "1970-01-01") latest))))
                   tasks)))
 
     (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
@@ -373,20 +383,22 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
     (when (and set-oldest file-oldest)
       (org-history-outline--update-max-days file-oldest))
 
-    (org-history-debug-print "org-history-outline--process-tasks N3")
+    (org-history-debug-print "org-history-outline--process-tasks N3" tasks-with-dates)
 
     ;; PHASE 2: Apply Overlays using native dolist
     (dolist (cell tasks-with-dates)
-      ;; (org-history-debug-print "org-history-outline--process-tasks N4 %s" cell)
+      (org-history-debug-print "org-history-outline--process-tasks N4 %s" cell)
       ;; 5. Thought: Used `pcase-dolist` or direct destructuring for cleaner pair extraction, and removed commented-out code.
-      (let ((marker (car cell))
+      (let ((header-pos (car cell))
             (date-str (cdr cell)))
-        ;; (org-history-debug-print "org-history-outline--process-tasks N41 %s %s" marker date-str)
+        (org-history-debug-print "org-history-outline--process-tasks N41 %s %s" header-pos date-str)
         (when date-str
           (save-excursion
-            (goto-char (marker-position marker))
-            (org-history-outline--attach-date date-str)))
-        (set-marker marker nil)))))
+            (goto-char header-pos)
+            (org-history-outline--attach-date date-str)
+            (org-history-debug-print "org-history-outline--process-tasks N42")))
+        ;; (set-marker marker nil)
+        ))))
 
 (defun org-history-outline--add-dates (tasks commit-hash &optional set-oldest)
   "Process TASKS instantly by pre-caching Git blame data using native loops.
@@ -406,9 +418,9 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
 
         (callback-for-blame-and-cache
          (lambda (git-blame-table)
-           (org-history-debug-print "org-history-outline--add-dates N3async %s" set-oldest)
+           (org-history-debug-print "org-history-outline--add-dates N3 async %s" set-oldest)
            (setq org-history-outline--git-blame-cache git-blame-table)
-           (org-history-outline--process-tasks tasks git-blame-table set-oldest)
+           (org-history-outline--process-tasks tasks git-blame-table set-oldest) ; tasks put here in lambda
            (setq org-history-outline--git-last-commit commit-hash))))
 
     (org-history-debug-print "org-history-outline--add-dates N2 %s %s" is-cache-update is-file-big)
