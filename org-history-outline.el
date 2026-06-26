@@ -305,15 +305,19 @@ ASYNC-CALLBACK in current buffer with rutern value above."
           ;; else
          (with-temp-buffer
            (org-history-debug-print "org-history-outline--git-blame-file-main N3")
-           (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" file))
+           (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" "--no-progress" file)) ; git blame -M -w --date=short -c --no-progress data_science
              (org-history-outline--process-git-blame-output)))))))
 
 ;; -=-= Process-tasks
 (defvar-local org-history-outline--git-blame-cache nil
   "Cache for optimization: Hastable - Key is line-num, value is date-str.
 Set to return value of function
- `org-history-outline--git-blame-file-main' in function
- `org-history-outline--add-dates'.")
+ `org-history-outline--git-blame-file-main' that call git blame and
+ process result in `org-history-outline--process-git-blame-output'
+ function, called in function `org-history-outline--add-dates'.
+Value used in `org-history-outline--process-tasks' function." )
+
+
 (defvar-local org-history-outline--git-last-commit nil
   "Used to check if cache required to be updated.")
 
@@ -346,12 +350,10 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
   (let* (file-oldest
          (tasks-with-dates
           (mapcar (lambda (task)
-
-                    (let* ((marker task)
-                          ;; TODO check that marker equal to start and remove start.
-                           (header-pos (1- (marker-position  marker)))
-                           (latest "1970-01-01")
-                           start end)
+                    ;; ISO 8601 strings sort chronologically when sorted alphabetically
+                    (let ((header-pos (1- (marker-position task)))
+                          (latest "1970-01-01")
+                          start end)
                       (save-excursion
                         (goto-char header-pos)
                         (setq start (line-number-at-pos))
@@ -368,9 +370,9 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
                           (setq l (1+ l))))
 
                       ;; Now update file-oldest with the oldest date found
-                      (when (and (not (string= latest "1970-01-01"))
-                                 (or (not file-oldest)
-                                     (string< latest file-oldest)))
+                      (unless (string= latest "1970-01-01")
+                        (when (or (not file-oldest)
+                                  (string< latest file-oldest)))
                         (setq file-oldest latest))
 
                       ;; Return pair: (marker . date-str) or nil if unchanged from epoch

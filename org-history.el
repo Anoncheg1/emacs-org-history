@@ -73,13 +73,16 @@
 
 ;;; TODO:
 
-;; - check org-history-directories
 ;; - make it work with outline mode.
-;; - command to add current folder to list
-;; - tests for -outlines  functions and itegral tests for minor mode
+;; - command to add current folder to list, remake org-history-directories
 ;; - create alternative to "git blame" for first (not last)
 ;;  modification: git log -S "your line of text" --format="%cd"
 ;;  --date=short --reverse
+
+;; - New headers use date from next line, think how to move first part
+;;  from `org-history-outline--process-tasks' to
+;;  `org-history-outline--process-git-blame-output'. And process all
+;;  headers maybe.
 
 ;; Require 29.1 for `org-fold-folded-p'
 
@@ -375,6 +378,7 @@ Warning, `vc-root-dir' will return nil until first commit will be made.
 Safe to call with existing .git.
 Use `default-directory'."
   (interactive)
+  (org-history-debug-print "org-history-git-init %s" first-file)
   (let ((vc-handled-backends '(Git)))
     ;;  Step 0 : clear vc catch
     (org-history--vc-reset-cache)
@@ -457,24 +461,28 @@ Returns the trimmed message string, or nil if an error occurs (e.g., no
 
 (defun org-history--commit (&optional last-commit-message)
   "Execute the commit or amend routines based on LAST-COMMIT-MESSAGE.
+If last-commit-message is nil we try to get it from git, otherwise we
+ check it if it is `org-history' made and have current date.
 Uses variable `buffer-file-name'.
 Assumes tracking confirmation has already been validated and set."
   (org-history-debug-print "org-history--commit %s" last-commit-message)
   (let* ((current-date (format-time-string "%F")) ; Y-%m-%d
-         ;; If last-commit-message wasn't provided, fetch it using buffer-file-name
+         ;; If last-commit-message wasn't provided, fetch it
          (msg (or last-commit-message
-                  (org-history--git-get-last-commit-message buffer-file-name))))
+                  (org-history--git-get-last-commit-message))))
 
     ;; Check if the commit message starts with "org-history [current-date]"
     (if (and msg (string-prefix-p (concat "org-history " current-date) msg))
         ;; Sub-Case A: Amend day's existing transaction
         (progn
+          (org-history-debug-print "org-history--commit N1")
           (org-history--vc-add-file buffer-file-name 'Git)
           (vc-git-command nil 0 nil "commit" "--amend" "--allow-empty" "--no-edit" "--date=now")
           (message "VC-Git: Amended existing commit for today."))
 
       ;; Sub-Case B: Stage file changes and commit with date-stamped message
       (progn
+        (org-history-debug-print "org-history--commit N2")
         (org-history--vc-add-file buffer-file-name 'Git)
         (vc-git-command nil 0 nil "commit" "-m" (format "org-history %s" current-date))
         (message "VC-Git: Created new date-stamped commit.")))))
@@ -516,10 +524,11 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
 ;; -=-= hook: after-save
 (defun org-history-hook-for-after-save ()
   "Hook for `org-mode' buffers run after saving a file."
+  (org-history-debug-print "org-history-hook-for-after-save N1")
   (when (and (not (eq org-history-answer-was-given 'dont-track-file))
              buffer-file-name
-             default-directory
-             (buffer-modified-p)) ; this just in case. in case of nothing to save raise error at attempt to commit if no diff.
+             default-directory) ; this just in case. in case of nothing to save raise error at attempt to commit if no diff.
+    (org-history-debug-print "org-history-hook-for-after-save N2")
     (let ((before-answer org-history-answer-was-given)
           (git-root (vc-git-root buffer-file-name))
           (is-file-tracked (eq 'Git (vc-backend buffer-file-name)))
@@ -686,13 +695,14 @@ STATE may be `overview', `contents', or `all'."
     (user-error "Org-history minor mode failed to activate in buffer %s, not Org mode" (buffer-name (current-buffer))))
   (if org-history-mode
       (progn
+        (org-history-debug-print "org-history-mode")
         (let ((vc-handled-backends '(Git)))
           ;; no last commit - ask user to init .git
           (when (or (not (vc-git-root buffer-file-name)) (not (org-history--vc-git-get-last-commit-hash))) ; any commits for file?
             (if (y-or-n-p (format "org-history: Do git init in %s? " default-directory))
                 (progn
                   (org-history-git-init (file-relative-name buffer-file-name default-directory)) ; (setq org-history-answer-was-given 'track-file))
-                  (org-history--commit "")) ; add commit
+                  (org-history--commit "")) ; create new commit.
               ;; else
               (setq org-history-answer-was-given 'dont-track-file)))
           (org-history-add-dates)) ; check last commit exist

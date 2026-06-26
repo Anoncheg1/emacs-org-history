@@ -24,10 +24,10 @@
 
     (let* ((m1 (make-marker))
            (m2 (make-marker))
-           (tasks (list (list m1 1 1) (list m2 2 2)))
+           (tasks (list m1 m2))
            (mock-commit "abcdef1234567890"))
 
-      (set-marker m1 1)
+      (set-marker m1 2)
       (set-marker m2 (progn (goto-char (point-min)) (forward-line 1) (point)))
 
       (cl-letf* (;; FIX: Provide a well-formed 8-element list so (file-attribute-size) returns 500
@@ -63,11 +63,11 @@
 
     (let* ((m1 (make-marker))
            (m2 (make-marker))
-           (tasks (list (list m1 1 1) (list m2 2 2)))
+           (tasks (list m1 m2 ))
            (mock-commit "async-commit-hash")
            (async-callback-called nil))
 
-      (set-marker m1 1)
+      (set-marker m1 2)
       (set-marker m2 (progn (goto-char (point-min)) (forward-line 1) (point)))
 
       (setq org-history-outline--git-last-commit nil)
@@ -105,11 +105,11 @@
     (setq buffer-file-name "/mock/path/to/test-file.org")
 
     (let* ((m1 (make-marker))
-           (tasks (list (list m1 1 1)))
+           (tasks (list m1))
            (mock-commit "same-commit-hash")
            (pre-filled-cache (make-hash-table :test 'eql)))
 
-      (set-marker m1 1)
+      (set-marker m1 2)
       (puthash 1 "2026-05-10" pre-filled-cache)
 
       (setq org-history-outline--git-last-commit mock-commit)

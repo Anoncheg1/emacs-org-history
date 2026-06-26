@@ -22,8 +22,7 @@
 
 (setopt org-history-debug-ert-enabled (not org-history-debug-buffer))
 
-;; -=-= 1)
-
+;; -=-= helping macro
 (defmacro org-history-test-with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)
   "Set up an isolated temporary Git and file environment for `org-history' testing.
 Argument BUFFER-VAR .
@@ -38,11 +37,13 @@ Optional argument BODY sd."
      (unwind-protect
          (progn
            ;; Initialize dummy functions that are called in the hook but not provided
-           (cl-letf* (((symbol-function 'org-history-debug-print) #'ignore)
-                      ((symbol-function 'org-history-git-init) #'ignore)
+           (cl-letf* (
+                      ;; ((symbol-function 'org-history-debug-print) #'ignore)
+                      ;; ((symbol-function 'org-history-git-init) #'ignore)
                       ((symbol-function 'org-history-add-dates) #'ignore)
                       ((symbol-function 'org-history-dir-locals-append) #'ignore)
-                      ((symbol-function 'org-history--commit) #'ignore))
+                      ;; ((symbol-function 'org-history--commit) #'ignore)
+                      )
              ,@body))
        ;; Cleanup phase
        (when (get-file-buffer ,file-var)
@@ -51,6 +52,59 @@ Optional argument BODY sd."
          (kill-buffer (get-file-buffer ,file-var)))
        (when (file-exists-p ,temp-dir-var)
          (delete-directory ,temp-dir-var t)))))
+
+;; -=-= test that after save first file and then saving some second file we save it to same commit.
+(ert-deftest org-history-test-save-two-files-amend-to-same-commit-vc ()
+  "After saving 2 files, only one org-history commit exists, and both files are in it."
+  (org-history-test-with-org-history-test-env buf1 file1 temp-dir
+    (let* ((org-history-dir-locals-flag nil)
+           (org-history-answer-was-given nil)
+           (file2 (expand-file-name "second-notes.org" temp-dir))
+           (buf2 nil)
+           (today-prefix (concat "org-history " (format-time-string "%F"))))
+      ;; Mock only y-or-n-p so user prompt doesn't interrupt.
+      (cl-letf (((symbol-function 'y-or-n-p) (lambda (_prompt) t)))
+        ;; 1. Create/save both files, using your org-history hooks.
+        (setq buf1 (find-file file1))
+        (org-mode)
+        (insert "First file content\n")
+        (set-buffer-modified-p t)
+        (save-buffer)
+        (org-history-hook-for-after-save)
+        (setq buf2 (find-file file2))
+        (org-mode)
+        (insert "Second file content\n")
+        (set-buffer-modified-p t)
+        (save-buffer)
+        (org-history-hook-for-after-save)
+        ;; (print (vc-git--run-command-string nil "ls-files")))))
+        ;; 2. Both files should be tracked according to `git ls-files`.
+        (let ((tracked-files
+               (split-string (vc-git--run-command-string nil "ls-files") "\n")))
+          (should (member (file-relative-name file1 temp-dir) tracked-files))
+          (should (member (file-relative-name file2 temp-dir) tracked-files)))
+
+        ;; 3. There should only be one org-history commit for today
+        (let ((msg (org-history--git-get-last-commit-message)))
+          (should (string-prefix-p today-prefix (string-trim msg))))
+
+        ;; 4. Both files should be tracked and their last commit hash should match HEAD hash.
+        (let* ((hash1 (org-history--vc-git-get-last-commit-hash file1))
+               (hash2 (org-history--vc-git-get-last-commit-hash file2))
+               (head-hash (org-history--vc-git-get-last-commit-hash)))
+          (should head-hash)
+          (should hash1)
+          (should hash2)
+          (should (string= hash1 head-hash))
+          (should (string= hash2 head-hash)))
+
+        ;; 5. Optionally, check the commit date is today
+        (let ((date1 (org-history--vc-git-get-last-commit-date file1))
+              (date2 (org-history--vc-git-get-last-commit-date file2)))
+          (should (string= date1 (format-time-string "%F")))
+          (should (string= date2 (format-time-string "%F"))))))))
+;; -=-= 1)
+
 
 ;; =========================================================================
 ;; CASE 1: No Git Repository Exists At All
@@ -96,27 +150,45 @@ Optional argument BODY sd."
 ;; CASE 2: Git Repo Exists + Same Day + Org-History Commit Prefix
 ;; =========================================================================
 
+;; (ert-deftest org-history-test-hook--case2-transparent-amend ()
+;;   "Case 2: Same-day file edits with `org-history' history should amend cleanly without prompt."
+;;   (org-history-test-with-org-history-test-env buf file temp-dir
+;;     (setq buf (find-file file))
+;;     (org-mode)
+;;     ;; FIX: Make sure buf is referenced
+;;     (ignore buf)
+;;     (let ((commit-called-with nil))
+;;       (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
+;;                 ((symbol-function 'vc-backend) (lambda (&rest _) 'Git))
+;;                 ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
+;;                 ;; Updated to match the new signature and date-stamped expected output
+;;                 ((symbol-function 'org-history--git-get-last-commit-message)
+;;                  (lambda (&rest _) "org-history 2026-06-12: regular backup"))
+;;                 ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t)) ;; dir-locals already present
+;;                 ;; Updated parameter tracking from date to message string
+;;                 ((symbol-function 'org-history--commit) (lambda (msg) (setq commit-called-with msg))))
+;;         (let ((org-history-answer-was-given 'track-file))
+;;           (org-history-hook-for-after-save)
+;;           ;; Transparently commits without prompting, passing the message forward
+;;           (should (string-equal commit-called-with "org-history 2026-06-12: regular backup")))))))
+
 (ert-deftest org-history-test-hook--case2-transparent-amend ()
   "Case 2: Same-day file edits with `org-history' history should amend cleanly without prompt."
   (org-history-test-with-org-history-test-env buf file temp-dir
     (setq buf (find-file file))
-    (org-mode)
-    ;; FIX: Make sure buf is referenced
-    (ignore buf)
-    (let ((commit-called-with nil))
-      (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
-                ((symbol-function 'vc-backend) (lambda (&rest _) 'Git))
-                ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
-                ;; Updated to match the new signature and date-stamped expected output
-                ((symbol-function 'org-history--git-get-last-commit-message)
-                 (lambda (&rest _) "org-history 2026-06-12: regular backup"))
-                ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t)) ;; dir-locals already present
-                ;; Updated parameter tracking from date to message string
-                ((symbol-function 'org-history--commit) (lambda (msg) (setq commit-called-with msg))))
-        (let ((org-history-answer-was-given 'track-file))
-          (org-history-hook-for-after-save)
-          ;; Transparently commits without prompting, passing the message forward
-          (should (string-equal commit-called-with "org-history 2026-06-12: regular backup")))))))
+    (with-current-buffer buf
+      (org-mode)
+      (let ((commit-called-with nil))
+        (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
+                  ((symbol-function 'vc-backend) (lambda (&rest _) 'Git))
+                  ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
+                  ((symbol-function 'org-history--git-get-last-commit-message)
+                   (lambda (&rest _) "org-history 2026-06-12: regular backup"))
+                  ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t))
+                  ((symbol-function 'org-history--commit) (lambda (msg) (setq commit-called-with msg))))
+          (let ((org-history-answer-was-given 'track-file))
+            (org-history-hook-for-after-save)
+            (should (string-equal commit-called-with "org-history 2026-06-12: regular backup"))))))))
 
 (ert-deftest org-history-test-hook--edge-cases ()
   "Test various commit message edge cases to ensure proper routing between Case 2 and Case 3."
@@ -229,12 +301,36 @@ Optional argument BODY sd."
         (should-not (memq #'org-history-hook-for-after-save after-save-hook))))))
 
 
+;; (ert-deftest org-history-test-commit-on-save--full-lifecycle2 ()
+;;   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
+;;          (test-file (expand-file-name "test-file.txt" temp-dir))
+;;          (default-directory temp-dir))
+;;     (unwind-protect
+;;         (progn
+;;           (find-file test-file)
+;;           (org-mode)
+;;           (org-history-git-init)
+;;           (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
+;;           (insert "Day 1: Initial lines of code.\n")
+;;           (cl-letf (((symbol-function 'format-time-string) (lambda (&rest _) "2026-05-22")))
+;;             (cl-letf (((symbol-function 'yes-or-no-p) (lambda (&rest _) t))
+;;                       ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+;;               (save-buffer t))))
+;;       (let ((commit-count (string-trim (shell-command-to-string "git rev-list --count HEAD 2>/dev/null || echo 0"))))
+;;         (should (string-equal commit-count "1")))
+;;       (when (get-file-buffer test-file)
+;;         (set-buffer-modified-p nil)
+;;         (kill-buffer (get-file-buffer test-file)))
+;;       (delete-directory temp-dir t))))
+
 (ert-deftest org-history-test-commit-on-save--full-lifecycle2 ()
   (let* ((temp-dir (file-name-as-directory (make-temp-file "emacs-git-test-" t)))
          (test-file (expand-file-name "test-file.txt" temp-dir))
          (default-directory temp-dir))
     (unwind-protect
         (progn
+          ;; Clear state before starting
+          (setq org-history-answer-was-given nil)
           (find-file test-file)
           (org-mode)
           (org-history-git-init)
@@ -249,7 +345,10 @@ Optional argument BODY sd."
       (when (get-file-buffer test-file)
         (set-buffer-modified-p nil)
         (kill-buffer (get-file-buffer test-file)))
+      ;; Clear state after test
+      (setq org-history-answer-was-given nil)
       (delete-directory temp-dir t))))
+
 
 (ert-deftest org-history-test-vc-git-commit-on-save--dot-git-already-exist-and-second-file ()
   "Test.
