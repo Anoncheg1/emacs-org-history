@@ -66,6 +66,8 @@ If file size is large than this value we run
   :type 'integer
   :safe #'integerp)
 
+(defvar org-history-hide-dates-flag) ; in org-history.el
+
 ;; -=-= Attach overlay
 (defun org-history-outline--attach-date (date-str)
   "Attach overlay with date at the end header with color gradient.
@@ -372,8 +374,8 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
                       ;; Now update file-oldest with the oldest date found
                       (unless (string= latest "1970-01-01")
                         (when (or (not file-oldest)
-                                  (string< latest file-oldest)))
-                        (setq file-oldest latest))
+                                  (string< latest file-oldest))
+                          (setq file-oldest latest)))
 
                       ;; Return pair: (marker . date-str) or nil if unchanged from epoch
                       (cons header-pos (unless (string= latest "1970-01-01") latest))))
@@ -437,10 +439,11 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
                 ;; then request update
                 (org-history-outline--git-blame-file-main (buffer-file-name) callback-for-blame-and-cache))
             ;; else - Case 2: sync
-            (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
-            (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
-            (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache)
-            (setq org-history-outline--git-last-commit commit-hash)))
+            (unless org-history-hide-dates-flag ; we cant call async because it will be too long and heavy, we will hide it anyway, with sync we can make it fast.
+              (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
+              (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
+              (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache)
+              (setq org-history-outline--git-last-commit commit-hash))))
       ;; else - ;; Case 3: use cache
       (org-history-debug-print "org-history-outline--add-dates N5")
       (unless org-history-outline--git-blame-cache

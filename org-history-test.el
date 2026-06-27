@@ -20,7 +20,8 @@
 
 ;;; Code:
 
-(setopt org-history-debug-ert-enabled (not org-history-debug-buffer))
+(setopt org-history-debug-ert-enabled nil)
+        ;; (not org-history-debug-buffer))
 
 ;; -=-= helping macro
 (defmacro org-history-test-with-org-history-test-env (buffer-var file-var temp-dir-var &rest body)

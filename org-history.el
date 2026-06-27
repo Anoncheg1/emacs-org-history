@@ -78,11 +78,14 @@
 ;; - create alternative to "git blame" for first (not last)
 ;;  modification: git log -S "your line of text" --format="%cd"
 ;;  --date=short --reverse
-
 ;; - New headers use date from next line, think how to move first part
 ;;  from `org-history-outline--process-tasks' to
 ;;  `org-history-outline--process-git-blame-output'. And process all
 ;;  headers maybe.
+
+;; - When org-history-add-dates called at opening document with some
+;;  headers opened, it add dates to top level headers only, maybe it
+;;  trigger to early idk
 
 ;; Require 29.1 for `org-fold-folded-p'
 
@@ -551,6 +554,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
                   (org-history-git-init rel-file-name)
                   (if org-history-hide-dates-flag
                       (message "org-history: dates was not shown because of org-history-hide-dates-flag variable.")
+                    ;; else
                     (org-history-add-dates))
                   (setq org-history-answer-was-given 'track-file))
               (setq org-history-answer-was-given 'dont-track-file)))
@@ -704,14 +708,21 @@ STATE may be `overview', `contents', or `all'."
                   (org-history-git-init (file-relative-name buffer-file-name default-directory)) ; (setq org-history-answer-was-given 'track-file))
                   (org-history--commit "")) ; create new commit.
               ;; else
-              (setq org-history-answer-was-given 'dont-track-file)))
-          (org-history-add-dates)) ; check last commit exist
+              (setq org-history-answer-was-given 'dont-track-file))))
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
         (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t))) ; cycle one header
         (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t) ; global cycling whole buffer
         (let ((orig-buffer (current-buffer))) ; lexical binding
+          ;; we need delay, because dir-locals and file-locals run before
           (run-with-timer
-           2.5 nil ; we use timer to to be able to see File-Local variables
+           0.5 nil
+           (lambda ()
+             (if (buffer-live-p orig-buffer)
+                 (with-current-buffer orig-buffer
+                   (org-history-add-dates)))))
+          ;; we use timer to to be able to see File-Local variables
+          (run-with-timer
+           2.5 nil
            (lambda ()
              ;; Because of lexical binding, orig-buffer is automatically captured
              (if (buffer-live-p orig-buffer)
