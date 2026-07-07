@@ -46,6 +46,8 @@ You can use it to show date only for specific date. For that add this line to yo
 To see history for every line in buffer use Built-in Emacs command:
 : M-x vc-annotate
 
+To auto-insert date or note right after Org header there is simple varible `org-log-done` in Org, that auto-insert timestamp or ask for note when you  change state of Org heading to DONE.
+
 To have auto-commits you may use something like this:
 #+begin_src elisp :lexical t :results none :exports code :eval no
 (defun my-git-commit-on-save ()

@@ -360,7 +360,9 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
                         (goto-char header-pos)
                         (setq start (line-number-at-pos))
                         (org-end-of-subtree t t)
-                        (setq end (line-number-at-pos)))
+                        (setq end (- (line-number-at-pos) 2)) ; idk why but if you move header the last line of it change lost history.
+                        (when (< end start)
+                          (setq end start)))
 
                       ;; Native loop over the line range to find the newest date
                       (let ((l start))
