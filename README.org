@@ -33,9 +33,13 @@ If you dont like using .dir-locals.el, you may disable this feature in ~/.emacs:
 
 : M-x customize-group RET org-history
 
+Try different format for date, add to ~/.emacs:
+: (setq org-history-outline-date-render-fn #'org-history-outline-default-render-daysold)
+
 * Screenshot
 
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
+[[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png][Alternative format]], see above in Customization.
 
 * Using without minor mode for one header at unfolding
 You can use it to show date only for specific date. For that add this line to your ~/.emacs file:

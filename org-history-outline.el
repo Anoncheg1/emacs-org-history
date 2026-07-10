@@ -66,9 +66,40 @@ If file size is large than this value we run
   :type 'integer
   :safe #'integerp)
 
+(defcustom org-history-outline-date-render-fn #'org-history-outline-default-render-date
+  "Function used to format and propertize the date string for the overlay.
+It should accept two arguments: `date-str`, `color-hex`, `days-old`
+ number and return a propertized string."
+  :type 'function
+  :group 'org-history)
+
 (defvar org-history-hide-dates-flag) ; in org-history.el
 
 ;; -=-= Attach overlay
+(defun org-history-outline-default-render-date (date-str color-hex days-old)
+  "Default formatter for the outline date overlay.
+Arguments: DATE-STR is in form of YYYY-MM-DD, COLOR-HEX is list,
+ DAYS-OLD is number.
+Returns a propertized string with a bracketed date using COLOR-HEX."
+  (propertize (format "[%s]" date-str)
+              'face `(:foreground ,color-hex :weight bold)
+              'help-echo (format "Age: %d days old" days-old)
+              'read-only t
+              'intangible t
+              'cursor-intangible t))
+
+(defun org-history-outline-default-render-daysold (date-str color-hex days-old)
+  "Default formatter for the outline date overlay.
+Arguments: DATE-STR is in form of YYYY-MM-DD, COLOR-HEX is list,
+ DAYS-OLD is number.
+Returns a propertized string with a bracketed date using COLOR-HEX."
+  (propertize (format "☼ %d days old" days-old)
+              'face `(:foreground ,color-hex)
+              'read-only t
+              'intangible t
+              'cursor-intangible t
+              'help-echo (format "[%s]" date-str)))
+
 (defun org-history-outline--attach-date (date-str)
   "Attach overlay with date at the end header with color gradient.
 Cursors should be at header position.
@@ -109,18 +140,14 @@ Automatically deletes older date overlays on the same headline when
     ;; 4. CREATION: Render using calculated hard padding strings
     (let* ((ov (make-overlay lstart lend))
            (last-char (buffer-substring-no-properties lstart lend))
-           (date-text (propertize (format "[%s]" date-str)
-                                  'face `(:foreground ,color-hex :weight bold)
-                                  'help-echo (format "Age: %d days old" days-old)
-                                  'read-only t
-                                  'intangible t
-                                  'cursor-intangible t)))
+           ;; Call the user-customizable function here:
+           (date-text (funcall org-history-outline-date-render-fn date-str color-hex days-old)))
+
 
       (overlay-put ov 'identity 'my-org-date)
       (overlay-put ov 'priority 100)
 
       ;; Concatenate the last character, the exact computed spaces, and the date.
-      ;; No complex `:align-to` layout engines involved—just pure text math.
       (overlay-put ov 'display (concat last-char calculated-spaces date-text)))))
 
 
