@@ -41,9 +41,39 @@ Try different format for date, add to ~/.emacs:
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png][Alternative format]], see above in Customization.
 
-* Using without minor mode for one header at unfolding
+* Special use case
+Add date to one header at unfolding, without using minor mode at all.
+
 You can use it to show date only for specific date. For that add this line to your ~/.emacs file:
-: (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t)))
+: (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold)
+* Check those packages if you like this one :)
+
+| Description                                   | URL                                                   |
+|-----------------------------------------------+-------------------------------------------------------|
+| Navigation in Dired, Packages, Buffers modes  | https://github.com/Anoncheg1/firstly-search           |
+| Search with Chinese                           | https://github.com/Anoncheg1/pinyin-isearch           |
+| Ediff fix                                     | https://github.com/Anoncheg1/ediffnw                  |
+| Dired history                                 | https://github.com/Anoncheg1/dired-hist               |
+| Selected window contrast                      | https://github.com/Anoncheg1/selected-window-contrast |
+| Copy link to clipboard                        | https://github.com/Anoncheg1/emacs-org-links          |
+| Solution for "callback hell"                  | https://github.com/Anoncheg1/emacs-async1             |
+| Restore buffer state                          | https://github.com/Anoncheg1/emacs-unmodified-buffer1 |
+| outline.el usage                              | https://github.com/Anoncheg1/emacs-outline-it         |
+| Hiding password in cafe                       | https://github.com/Anoncheg1/emacs-hidepass           |
+| Call LLMs and agents from Org-mode cui blocks | https://github.com/Anoncheg1/emacs-cui                |
+
+* Donate, sponsor the author
+
+You can sponsor author crypto money directly with crypto currencies:
+- BTC (Bitcoin) address: 1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25
+
+[[https://raw.githubusercontent.com/Anoncheg1/public-share/refs/heads/main/BTC-1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25.png]]
+
+- USDT (Tether TRX-TRON) address: TVoXfYMkVYLnQZV3mGZ6GvmumuBfGsZzsN
+
+[[https://raw.githubusercontent.com/Anoncheg1/public-share/refs/heads/main/USDT-TVoXfYMkVYLnQZV3mGZ6GvmumuBfGsZzsN.png]]
+
+- TON (Telegram) address: UQC8rjJFCHQkfdp7KmCkTZCb5dGzLFYe2TzsiZpfsnyTFt9D
 
 * Emacs built-in alternative
 
@@ -80,32 +110,3 @@ To have auto-commits you may use something like this:
 (setq vc-git-annotate-switches '("-M"))  ; git blame with immune to change order of headers
 (add-hook 'after-save-hook 'my-git-commit-on-save)
 #+end_src
-
-* Other packages
-
-| Description                                   | URL                                                   |
-|-----------------------------------------------+-------------------------------------------------------|
-| Navigation in Dired, Packages, Buffers modes  | https://github.com/Anoncheg1/firstly-search           |
-| Search with Chinese                           | https://github.com/Anoncheg1/pinyin-isearch           |
-| Ediff fix                                     | https://github.com/Anoncheg1/ediffnw                  |
-| Dired history                                 | https://github.com/Anoncheg1/dired-hist               |
-| Selected window contrast                      | https://github.com/Anoncheg1/selected-window-contrast |
-| Copy link to clipboard                        | https://github.com/Anoncheg1/emacs-org-links          |
-| Solution for "callback hell"                  | https://github.com/Anoncheg1/emacs-async1             |
-| Restore buffer state                          | https://github.com/Anoncheg1/emacs-unmodified-buffer1 |
-| outline.el usage                              | https://github.com/Anoncheg1/emacs-outline-it         |
-| Hiding password in cafe                       | https://github.com/Anoncheg1/emacs-hidepass           |
-| Call LLMs and agents from Org-mode cui blocks | https://github.com/Anoncheg1/emacs-cui                |
-
-* Donate, sponsor the author
-
-You can sponsor author crypto money directly with crypto currencies:
-- BTC (Bitcoin) address: 1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25
-
-[[https://raw.githubusercontent.com/Anoncheg1/public-share/refs/heads/main/BTC-1CcDWSQ2vgqv5LxZuWaHGW52B9fkT5io25.png]]
-
-- USDT (Tether TRX-TRON) address: TVoXfYMkVYLnQZV3mGZ6GvmumuBfGsZzsN
-
-[[https://raw.githubusercontent.com/Anoncheg1/public-share/refs/heads/main/USDT-TVoXfYMkVYLnQZV3mGZ6GvmumuBfGsZzsN.png]]
-
-- TON (Telegram) address: UQC8rjJFCHQkfdp7KmCkTZCb5dGzLFYe2TzsiZpfsnyTFt9D
