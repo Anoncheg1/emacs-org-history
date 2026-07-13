@@ -11,7 +11,7 @@ It uses Git version control to make automatic commits whenever you save a buffer
 
 A special feature allows auto-enabling the mode for all files in specified directories by using `.dir-locals.el`, removing the need to manually list tracked files.
 
-*Version: 0.4*
+*Version: 0.5*
 
 * Features
 - Automatically commits buffer changes to a per-file Git repository in the background (using `--amend` to group daily changes)
