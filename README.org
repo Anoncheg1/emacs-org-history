@@ -34,15 +34,12 @@ Clone the repository and add it to your `load-path`:
 Per file:
 : M-x org-history-mode
 
-Or globally to read-only:
-: (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold)
-
 If you dont like using .dir-locals.el, you may disable this feature in ~/.emacs:
 (setopt org-history-dir-locals-flag nil)
 
 Alternatively, enable it for specific folders using ~.dir-locals.el~:
 #+begin_src elisp :lexical t :results none :exports code :eval no
-((org-mode . ((org-history-mode . t))))
+((org-mode . ((mode . org-history))))
 #+end_src
 
 * Customization
@@ -125,6 +122,60 @@ To have auto-commits you may use something like this:
 ;; Attach to the save hook
 (setq vc-git-annotate-switches '("-M"))  ; git blame with immune to change order of headers
 (add-hook 'after-save-hook 'my-git-commit-on-save)
+#+end_src
+
+* Note about .dir-locals.el format
+Format of .dir-locals.el:
+#+begin_src elisp :lexical t :results none :exports code :eval no
+((MAJOR-MODE . ((VARIABLE . VALUE)
+                (VARIABLE . VALUE)))
+ ;; Comments allowed
+ (SUBDIRECTORY-STRING . ((MAJOR-MODE . ((VARIABLE . VALUE))))))
+#+end_src
+It is exactly *one alist*.
+
+Emacs provide *Pseudo-Variables*:
+- eval :: Allow to run run arbitrary code: ~(eval . (display-line-numbers-mode 1)~. When you use eval, Emacs's security gate kicks in. Because running arbitrary Elisp can be dangerous.
+- mode :: to activate mode ~(mode . minor-mode-name)~, same as File-Local Variable.  If you want to enable multiple minor modes, you must repeat the mode key on separate lines.
+
+Examples of ~.dir-locals.el~:
+#+begin_src elisp :lexical t :results none :exports code :eval no
+;;; Unified Project Configuration File
+;;; Demonstrates all core features: modes, subdirs, minor modes, eval, and comments.
+
+((nil . ((fill-column . 80)                     ; Aspect 1 & 2: Global variable for all modes
+         (mode . hl-line)                       ; Aspect 4: Enable Highlight Line minor mode globally
+
+         ;; Aspect 5: Dynamic execution via 'eval' to set a custom buffer-local variable
+         (eval . (setq-local project-loaded-at (current-time-string)))))
+
+ (python-mode . ((indent-tabs-mode . nil)       ; Aspect 2: Mode-specific variable override
+                 (tab-width . 4)
+                 (mode . display-line-numbers))) ; Aspect 4: Minor mode active only in Python
+
+ ;; Aspect 3: Subdirectory scoping for anything under the "tests/" directory
+ ("tests" . ((nil . ((fill-column . 100)))      ; Relax the line limit for test files
+             (python-mode . ((mode . flycheck)))))) ; Enable Flycheck only for Python tests
+#+end_src
+
+Emacs also check for ~.dir-locals-2.el~ file.
+
+By default, any variable defined in a .dir-locals.el applies to that directory and *all of its subdirectories recursively*. To prevent this:
+#+begin_src elisp :lexical t :results none :exports code :eval no
+((nil . ((subdirs . nil)          ; Disables inheritance for subdirectories
+         (fill-column . 80))))
+#+end_src
+
+You may move .dir-locals.el settings to ~/.emacs this way:
+#+begin_src elisp :lexical t :results none :exports code :eval no
+;; 1. Define a "class" (a named bundle of settings)
+(dir-locals-set-class-variables
+ 'my-javascript-project
+ '((js-mode . ((js-indent-level . 2)))))
+
+;; 2. Bind that class to a specific absolute directory path
+(dir-locals-set-directory-class
+ "/home/user/projects/web-app" 'my-javascript-project)
 #+end_src
 
 * Contact & Support

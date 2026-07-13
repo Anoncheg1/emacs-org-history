@@ -56,7 +56,7 @@ Optional argument BODY sd."
 
 ;; -=-= test that after save first file and then saving some second file we save it to same commit.
 (ert-deftest org-history-test-save-two-files-amend-to-same-commit-vc ()
-  "After saving 2 files, only one org-history commit exists, and both files are in it."
+  "After saving 2 files, only one `org-history' commit exists, and both files are in it."
   (org-history-test-with-org-history-test-env buf1 file1 temp-dir
     (let* ((org-history-dir-locals-flag nil)
            (org-history-answer-was-given nil)
@@ -536,12 +536,16 @@ Verify that an untracked file in an existing Git repository falls into
             (should (file-exists-p expected-file))
             (with-temp-buffer
               (insert-file-contents expected-file)
-              (let ((content (read (current-buffer))))
-                (should (assoc 'org-mode content))
-                (let* ((org-rules (cdr (assoc 'org-mode content)))
-                       (eval-rule (assoc 'eval org-rules)))
-                  (should eval-rule)
-                  (should (memq 'fboundp (flatten-tree eval-rule))))))))
+              (let ((content (read (current-buffer)))
+                    (rel-file-name (file-relative-name dummy-file temp-dir)))
+                ;; Look for entry for dummy.org
+                (should (assoc rel-file-name content))
+                (let* ((file-entry (assoc rel-file-name content))
+                       (modes (cdr file-entry))
+                       (org-entry (assoc 'org-mode modes))
+                       (org-vars (cdr org-entry)))
+                  (should org-entry)
+                  (should (member '(mode . org-history) org-vars)))))))
       (when (get-file-buffer dummy-file)
         (kill-buffer (get-file-buffer dummy-file)))
       (when (file-exists-p expected-file)
@@ -626,11 +630,12 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
     (org-mode)
     (insert "* Dummy Heading\n")
     (goto-char (point-min))
+    ;; Case: org-history-mode enabled
     (let ((add-dates-called nil)
           (mock-orig-fun (lambda (&rest _) nil))
           (org-history-outline--git-blame-cache "")
           (org-history-mode t))
-      (cl-letf (;; Fix: Change (lambda () t) to (lambda (&rest _) t)
+      (cl-letf (;; Some org functions always true/false for test context
                 ((symbol-function 'org-at-heading-p) (lambda (&rest _) t))
                 ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil))
                 ((symbol-function 'org-history-add-dates) (lambda (&rest _) (setq add-dates-called t))))
@@ -638,26 +643,25 @@ backing file, the hook must exit immediately without triggering `y-or-n-p'."
                    (lambda (kind) (if (eq kind 'any) t nil))))
           (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
           (should add-dates-called))))
-    ;; UFO case, usage without minor mode
+    ;; Case: org-history-mode disabled
     (let ((add-dates-called nil)
           (mock-orig-fun (lambda (&rest _) nil))
           (org-history-outline--git-blame-cache nil)
           (org-history-mode nil))
-      (cl-letf (;; Fix: Change (lambda () t) to (lambda (&rest _) t)
+      (cl-letf (;; Org functions neutral
                 ((symbol-function 'org-at-heading-p) (lambda (&rest _) t))
                 ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil))
                 ((symbol-function 'org-history-add-dates) (lambda (&rest _) (setq add-dates-called t))))
         (cl-letf (((symbol-function 'called-interactively-p)
                    (lambda (kind) (if (eq kind 'any) t nil))))
           (funcall #'org-history--show-dates-at-unfold mock-orig-fun)
-          (should add-dates-called))))
-
-    ::
+          (should (not add-dates-called)))))
+    ;; Case: edge, mode enabled but cache missing
     (let ((add-dates-called nil)
           (mock-orig-fun (lambda (&rest _) nil))
           (org-history-outline--git-blame-cache nil)
           (org-history-mode t))
-      (cl-letf (;; Fix: Change (lambda () t) to (lambda (&rest _) t)
+      (cl-letf (;; Org functions neutral
                 ((symbol-function 'org-at-heading-p) (lambda (&rest _) t))
                 ((symbol-function 'org-fold-folded-p) (lambda (&rest _) nil))
                 ((symbol-function 'org-history-add-dates) (lambda (&rest _) (setq add-dates-called t))))
