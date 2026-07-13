@@ -5,29 +5,45 @@
 
 * org-history
 
+Track and display modification dates automatically in `org-mode` buffers with this minor mode.
+
+It uses Git version control to make automatic commits whenever you save a buffer.
+
+A special feature allows auto-enabling the mode for all files in specified directories by using `.dir-locals.el`, removing the need to manually list tracked files.
+
 *Version: 0.4*
 
-Show the last modification date for headers in Org-mode of GNU Emacs using git VCS and auto-commit.
-
 * Features
+- Automatically commits buffer changes to a per-file Git repository in the background (using `--amend` to group daily changes)
+- Prompts for confirmation only once per file
+- Efficient performance even with large files, thanks to caching and asynchronous Git operations
 
-- No buttons: simply enable the org-history-mode minor mode in the Org buffer.
-- Auto-commit with --amend per day
-- Bother you with question yes-or-no one time only.
-- Accurate tracking of the current file is enabled via the .dir-locals.el file in the current directory.
-- No hanging and freezes for large files - we use cache and async request.
+* Installation
+** MELPA
+: M-x package-install RET org-history RET
 
-* Configuration
-
+** Manual
+Clone the repository and add it to your `load-path`:
 #+begin_src elisp :lexical t :results none :exports code :eval no
-(add-to-list 'load-path "/path-to/emacs-org-history")
+(add-to-list 'load-path "/path/to/emacs-org-history/")
 (require 'org-history)
 #+end_src
 
-Activation: ~M-x org-history-mode~
+
+* Activation:
+Per file:
+: M-x org-history-mode
+
+Or globally to read-only:
+: (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold)
 
 If you dont like using .dir-locals.el, you may disable this feature in ~/.emacs:
 (setopt org-history-dir-locals-flag nil)
+
+Alternatively, enable it for specific folders using ~.dir-locals.el~:
+#+begin_src elisp :lexical t :results none :exports code :eval no
+((org-mode . ((org-history-mode . t))))
+#+end_src
 
 * Customization
 
@@ -42,7 +58,7 @@ Try different format for date, add to ~/.emacs:
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png][Alternative format]], see above in Customization.
 
 * Special use case
-Add date to one header at unfolding, without using minor mode at all.
+Add date to one header at unfolding, without using minor mode at all.`
 
 You can use it to show date only for specific date. For that add this line to your ~/.emacs file:
 : (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold)
@@ -110,3 +126,6 @@ To have auto-commits you may use something like this:
 (setq vc-git-annotate-switches '("-M"))  ; git blame with immune to change order of headers
 (add-hook 'after-save-hook 'my-git-commit-on-save)
 #+end_src
+
+* Contact & Support
+Questions or issues? [[Open an issue on GitHub][https://github.com/yourusername/emacs-org-history/issues]]

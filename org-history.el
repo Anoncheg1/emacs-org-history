@@ -140,21 +140,22 @@ Also used to reinitialize if no commits was made."
                                "/.emacs.desktop"
                                "/.emacs.desktop.lock"
                                "elpa/")
-  "List of default patterns to write into a new .gitignore file.
-Ignores: compiled files, backups, and lock files."
+   "Default patterns written into a newly created .gitignore file.
+These patterns ensure compiled Lisp files, autosaves, backups, and
+lock files are not tracked by Git."
   :type '(repeat string)
   :group 'org-history)
 
 (defcustom org-history-hide-dates-flag nil
-  "Non-nil means to hide dates after 2 seconds of mode activation.
-Timer is used to observe File-local variables, because it happen after
- mode loading from dir-locals."
+  "Non-nil means hide dates two seconds after activating the mode.
+A timer is used to allow file-local and directory-local variables to
+ load completely before calculating the final state."
   :type 'boolean
   :group 'org-history)
 
 (defcustom org-history-dir-locals-flag t
-  "Non-nil means save autostart of `org-history' mode in dir-locals.el.
-It is a file in .git root folder of current file."
+  "Non-nil means save command to autostart `org-history' in dir-locals.el.
+dir-locals.el located in  the `.git' root folder of the current file."
   :type 'boolean
   :group 'org-history)
 
@@ -167,21 +168,20 @@ It is a file in .git root folder of current file."
 ;;   :group 'org-history)
 
 (defvar-local org-history-answer-was-given nil
-  "When non-nil, auto-commit at saving for this file is active.
-Used for asking user whether to track current file.
+  "Status of the user choice regarding tracking for the current file.
+When non-nil, the asnwer was given and we wouldnt ask user again.
 
-Possible symbol values:
-- nil			Tracking status not set yet.
-- \='dont-track-file	Do NOT track this file.
-- \='track-file		Track this file.")
+Possible symbol values are:
+  nil              -- User was not asked yet.
+  `dont-track-file' -- Do not track this file.
+  `track-file'     -- Track this file.")
 
 ;; -=-= functions: VC-git
 
 (defun org-history--vc-reset-cache (&optional file)
-  "Flush all common VC cache properties for current directory or FILE.
-Uses `default-derectory'."
+  "Flush all common VC cache properties for `default-derectory' or FILE."
   (if file
-      (vc-file-clearprops buffer-file-name)
+      (vc-file-clearprops file)
     ;; else
     (when-let ((root (vc-root-dir)))
       (dolist (prop '(vc-backend vc-state vc-working-revision vc-name))
@@ -297,18 +297,21 @@ Uses `default-directory'."
 
 (defun org-history--dir-locals-p (&optional rel-file-name config)
   "Check if there is rule for file in .dir-locals.el.
-Shoul be called with `default-directory' set to git root.
+Should be called with `default-directory' set to git root.
 CONFIG if not set reading from variable `buffer-file-name'.
 Files is REL-FILE-NAME or BUFFER-FILE-NAME.
 Optional argument CONFIG is parsed .dir-locals containing an `org-mode`
- rule for REL-FILE-NAME to activate `org-mistory-mode'.
+ rule for REL-FILE-NAME to activate `org-history-mode'.
 Use `default-directory' and variable"
   (org-history-debug-print "org-history--dir-locals-p N1 %s" rel-file-name)
   (org-history-debug-print "org-history--dir-locals-p N1" config)
-  (let* ((config (or config (when (file-exists-p ".dir-locals.el")
-                              (with-temp-buffer
-                                (insert-file-contents ".dir-locals.el")
-                                (ignore-errors (read (current-buffer)))))))
+  (let* ((config (or config (let ((dl-file (expand-file-name ".dir-locals.el" (or (vc-git-root buffer-file-name)
+                                                                                  default-directory))))
+                              (when (file-exists-p dl-file)
+                                ;; (vc-git-root buffer-file-name)
+                                (with-temp-buffer
+                                  (insert-file-contents dl-file)
+                                  (ignore-errors (read (current-buffer))))))))
          (org-entries (cdr (assoc 'org-mode config)))) ; return nil if config is nil
     (org-history-debug-print "org-history--dir-locals-p N2" config)
     (when org-entries
@@ -409,9 +412,9 @@ Use `default-directory'."
       (when (not (file-exists-p ".gitignore"))
         (with-temp-file  ".gitignore"
           (insert (mapconcat #'identity org-history-gitignore-content "\n") "\n")
-          ;; (save-buffer
-          (write-file ".gitignore")
-          (basic-save-buffer)))
+          ;; (write-file ".gitignore")
+          ;; (basic-save-buffer)
+          ))
 
       ;; Step 1: Initialize the Git repository
       (dolist (args org-history-git-init-commands)
@@ -694,7 +697,7 @@ STATE may be `overview', `contents', or `all'."
   "Minor mode for `org-mode' to showing date of last modified per outlier."
   :init-value nil
   ;; :keymap oai-mode-map
-  :group 'org-nistory
+  :group 'org-hnistory
   (unless (derived-mode-p 'org-mode)
     (user-error "Org-history minor mode failed to activate in buffer %s, not Org mode" (buffer-name (current-buffer))))
   (if org-history-mode
@@ -710,7 +713,7 @@ STATE may be `overview', `contents', or `all'."
               ;; else
               (setq org-history-answer-was-given 'dont-track-file))))
         (add-hook 'after-save-hook #'org-history-hook-for-after-save nil t)
-        (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold '((local . t))) ; cycle one header
+        (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold) ; cycle one header
         (add-hook 'org-cycle-hook #'org-history--cycle-hook nil t) ; global cycling whole buffer
         (let ((orig-buffer (current-buffer))) ; lexical binding
           ;; we need delay, because dir-locals and file-locals run before
