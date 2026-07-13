@@ -44,14 +44,14 @@
   :group 'org-history)
 
 (defcustom org-history-debug-buffer nil
-  "If non-nil, enable debuging to a new buffer with such name.
+  "If non-nil, enable debugging to a new buffer with such name.
 Set to something like \"*debug-history*\"  to enable debugging."
   :type '(choice (const :tag "No debugging" nil)
                  (string :tag "Name of buffer"))
   :group 'org-history-debug)
 
 (defcustom org-history-debug-ert-enabled nil
-  "Non-nil means use stdout instead of separete buffer for debugging.
+  "Non-nil means use stdout instead of separate buffer for debugging.
 useful for debugging in ERT."
   :type 'boolean
   :group 'org-history-debug)
@@ -78,7 +78,7 @@ Always return string."
     (concat (prin1-to-string args) "\n")))
 
 (defun org-history-debug--safe-format (fmt &rest args)
-  "Format with fixing count of '%s' in FMT according to lenght of ARGS.
+  "Format with fixing count of '%s' in FMT according to length of ARGS.
 Formats by removing all '%s' from FMT and appending ' %s' for each ARGS."
   ;; Remove all "%s" from fmt
   (let* ((fmt (replace-regexp-in-string " ?%s" "" fmt))
@@ -91,7 +91,7 @@ Formats by removing all '%s' from FMT and appending ' %s' for each ARGS."
 
 
 (defun org-history-debug-print (&rest args)
-  "If firt argument of ARGS is a stringwith %s than behave like format.
+  "If first argument of ARGS is a stringwith %s than behave like format.
 Otherwise format every to string and concatenate.
 Return last argument, but should not be used for return value."
   (when (and (or org-history-debug-buffer
@@ -115,7 +115,8 @@ Return last argument, but should not be used for return value."
                                        (cons 'window 'new)
                                        (cons 'window-width w-width)))))
                             (when (not (eq last-input-event 7)) ; not C-g exit - too much verbose
-                              (select-window current-window))))
+                              (select-window current-window) ; return nil
+                              t)))
              (timestamp (when org-history-debug-timestamp-flag
                           (format-time-string "%M:%S.%3N " (current-time))))
              result-string)
@@ -172,7 +173,7 @@ Return last argument, but should not be used for return value."
                         (insert second-part))
                     ;; else - as one
                     (insert result-string)))))))))
-  (car (reverse args)))
+  (car (last args)))
 
 (defun org-history-debug--vc-git-status ()
   "Return git status string."
