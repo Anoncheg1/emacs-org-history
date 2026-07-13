@@ -61,7 +61,7 @@ Used to calculate `max-days' range for colors of dates."
   "Max file size when we simple waiting without asynchronous call.
 This prevent freezing of Emacs for large files.
 If file size is large than this value we run
- asynchorouse process to get git blame for file."
+ asynchronous process to get git blame for file."
   :group 'org-history
   :type 'integer
   :safe #'integerp)
@@ -85,7 +85,7 @@ Returns a propertized string with a bracketed date using COLOR-HEX."
               'face `(:foreground ,color-hex :weight bold)
               'help-echo (format "Age: %d days old" days-old)
               'read-only t
-              'intangible t
+              ;; 'intangible t
               'cursor-intangible t))
 
 (defun org-history-outline-default-render-daysold (date-str color-hex days-old)
@@ -96,7 +96,7 @@ Returns a propertized string with a bracketed date using COLOR-HEX."
   (propertize (format "☼ %d days old" days-old)
               'face `(:foreground ,color-hex)
               'read-only t
-              'intangible t
+              ;; 'intangible t
               'cursor-intangible t
               'help-echo (format "[%s]" date-str)))
 
@@ -129,7 +129,7 @@ Automatically deletes older date overlays on the same headline when
          (current-line-length (- lend (line-beginning-position)))
          ;; Determine needed padding (fallback to at least 2 spaces if line is longer than target)
          (padding-needed (max 2 (- org-history-outline-date-column current-line-length)))
-         ;; Indetnaion for dates.
+         ;; Indentation for dates.
          (padding-needed (+ padding-needed (org-outline-level)))
          ;; Generate a real string containing exactly that many spaces
          (calculated-spaces (make-string padding-needed ?\s)))
@@ -261,17 +261,17 @@ Call CALLBACK with one argument of calling buffer if success."
                                 ((not (zerop exit-code))
                                  (let ((err-msg (if (buffer-live-p output-buf)
                                                     (with-current-buffer output-buf (string-trim (buffer-string)))
-                                                    ;; (with-current-buffer output-buf (string-trim (buffer-string)))
+                                                  ;; (with-current-buffer output-buf (string-trim (buffer-string)))
                                                   "Unknown Git error")))
                                    (message "Git blame failed: %s" (if (string-empty-p err-msg) "Exit code non-zero" err-msg))))
 
                                 ;; Success Case: Output parsed out of the automatically filled output-buf
                                 (t
                                  (unless (buffer-live-p output-buf)
-                                     (error "Sentitne output-buf is not alive"))
-                                 (when (buffer-live-p output-buf)
-                                       (with-current-buffer output-buf
-                                         (funcall callback calling-buf))))) ; CALLBACK!
+                                   (error "Sentitne output-buf is not alive"))
+
+                                 (with-current-buffer output-buf
+                                   (funcall callback calling-buf)))) ; CALLBACK!
 
                              ;; Universal Guard Clause for the Sentinel Logic
                              (error
@@ -315,31 +315,27 @@ the last modification date formatted as \"YYYY-MM-DD\".
 When ASYNC-CALLBACK provided, return immediately and call
 ASYNC-CALLBACK in current buffer with rutern value above."
   (org-history-debug-print "org-history-outline--git-blame-file-main N1 async=%s %s %s" async-callback file default-directory)
-  (when (and (file-exists-p file)
-             default-directory
-             ;; (org-history--vc-git-get-last-commit-hash file) ; have commits?
-             (vc-git-responsible-p default-directory))
-    (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
-      (if async-callback
-          (unless (process-live-p org-history-outline--blame-proc)
-            (setq org-history-outline--blame-proc
-                  (org-history-outline--vc-git-blame-file-async file
-                                                                (lambda (caller-buf)
-                                                                  (let ((blame-table (org-history-outline--process-git-blame-output)))
-                                                                    ;; (org-history-debug-print "org-history-outline--git-blame-file-main N2 %s" (current-buffer) caller-buf blame-table)
-                                                                    ;; in current-buffer
-                                                                    (when (buffer-live-p caller-buf)
-                                                                      (with-current-buffer caller-buf
-                                                                        (funcall async-callback blame-table))))))))
-          ;; else
-         (with-temp-buffer
-           (org-history-debug-print "org-history-outline--git-blame-file-main N3")
-           (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" "--no-progress" file)) ; git blame -M -w --date=short -c --no-progress data_science
-             (org-history-outline--process-git-blame-output)))))))
+  (when (and (file-exists-p file) (vc-git-responsible-p default-directory))
+    (if async-callback
+        (unless (process-live-p org-history-outline--blame-proc)
+          (setq org-history-outline--blame-proc
+                (org-history-outline--vc-git-blame-file-async file
+                                                              (lambda (caller-buf)
+                                                                (let ((blame-table (org-history-outline--process-git-blame-output)))
+                                                                  ;; (org-history-debug-print "org-history-outline--git-blame-file-main N2 %s" (current-buffer) caller-buf blame-table)
+                                                                  ;; in current-buffer
+                                                                  (when (buffer-live-p caller-buf)
+                                                                    (with-current-buffer caller-buf
+                                                                      (funcall async-callback blame-table))))))))
+      ;; else
+      (with-temp-buffer
+        (org-history-debug-print "org-history-outline--git-blame-file-main N3")
+        (when (zerop (vc-git-command t 0 nil "blame" "-M" "-w" "--date=short" "-c" "--no-progress" file)) ; git blame -M -w --date=short -c --no-progress data_science
+          (org-history-outline--process-git-blame-output))))))
 
 ;; -=-= Process-tasks
 (defvar-local org-history-outline--git-blame-cache nil
-  "Cache for optimization: Hastable - Key is line-num, value is date-str.
+  "Cache for optimization: Hash table - Key is line-num, value is date-str.
 Set to return value of function
  `org-history-outline--git-blame-file-main' that call git blame and
  process result in `org-history-outline--process-git-blame-output'
@@ -383,6 +379,7 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
                     (let ((header-pos (1- (marker-position task)))
                           (latest "1970-01-01")
                           start end)
+                      (set-marker task nil) ; free marker
                       (save-excursion
                         (goto-char header-pos)
                         (setq start (line-number-at-pos))
@@ -468,7 +465,7 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
                 ;; then request update
                 (org-history-outline--git-blame-file-main (buffer-file-name) callback-for-blame-and-cache))
             ;; else - Case 2: sync
-            (unless org-history-hide-dates-flag ; we cant call async because it will be too long and heavy, we will hide it anyway, with sync we can make it fast.
+            (unless (bound-and-true-p org-history-hide-dates-flag) ; we cant call async because it will be too long and heavy, we will hide it anyway, with sync we can make it fast.
               (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
               (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
               (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache)
