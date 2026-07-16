@@ -31,6 +31,7 @@
 
 ;;; Code:
 
+(require 'org-history-debug)
 (require 'color)
 
 ;; -=-= variables
@@ -361,15 +362,15 @@ current `org-history-outline-max-days'."
       (message "org-history: max-days set to %s days." org-history-outline-max-days))))
 
 
-(defun org-history-outline--process-tasks (tasks blame-table &optional set-oldest)
-  "Process TASKS instantly by pre-caching Git blame data using native loops.
+(defun org-history-outline--process-tasks (head-markers blame-table &optional set-oldest)
+  "Process HEAD-MARKERS instantly by pre-caching Git blame data using native loops.
 Should be called in target buffer.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
  set to oldest date during applying if it not older than
  `org-history-outline-max-days' orginal value.
 Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
   (org-history-debug-print "org-history-outline--process-tasks N1 %s %s" set-oldest (current-buffer))
-  (org-history-debug-print "org-history-outline--process-tasks N11" tasks)
+  (org-history-debug-print "org-history-outline--process-tasks N11" head-markers)
 
   ;; PHASE 1: Process ranges instantly using native loops
   (let* (file-oldest
@@ -405,7 +406,7 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
 
                       ;; Return pair: (marker . date-str) or nil if unchanged from epoch
                       (cons header-pos (unless (string= latest "1970-01-01") latest))))
-                  tasks)))
+                  head-markers)))
 
     (org-history-debug-print "org-history-outline--process-tasks N2 %s" set-oldest file-oldest)
 
@@ -430,8 +431,8 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
         ;; (set-marker marker nil)
         ))))
 
-(defun org-history-outline--add-dates (tasks commit-hash &optional set-oldest)
-  "Process TASKS instantly by pre-caching Git blame data using native loops.
+(defun org-history-outline--add-dates (head-markers commit-hash &optional set-oldest)
+  "Process HEAD-MARKERS instantly by pre-caching Git blame data using native loops.
 Called by Called by `org-history-add-dates'.
 Uses variable `buffer-file-name' function.
 If optional argument SET-OLDEST, `org-history-outline-max-days' will be
@@ -450,7 +451,7 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
          (lambda (git-blame-table)
            (org-history-debug-print "org-history-outline--add-dates N3 async %s" set-oldest)
            (setq org-history-outline--git-blame-cache git-blame-table)
-           (org-history-outline--process-tasks tasks git-blame-table set-oldest) ; tasks put here in lambda
+           (org-history-outline--process-tasks head-markers git-blame-table set-oldest) ; head-markers put here in lambda
            (setq org-history-outline--git-last-commit commit-hash))))
 
     (org-history-debug-print "org-history-outline--add-dates N2 %s %s" is-cache-update is-file-big)
@@ -461,20 +462,20 @@ Argument COMMIT-HASH full hash of commit for current file, mandatory."
               (progn
                 ;; Update it from cache fast
                 (when org-history-outline--git-blame-cache
-                  (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))
+                  (org-history-outline--process-tasks head-markers org-history-outline--git-blame-cache))
                 ;; then request update
                 (org-history-outline--git-blame-file-main (buffer-file-name) callback-for-blame-and-cache))
             ;; else - Case 2: sync
             (unless (bound-and-true-p org-history-hide-dates-flag) ; we cant call async because it will be too long and heavy, we will hide it anyway, with sync we can make it fast.
               (setq org-history-outline--git-blame-cache (org-history-outline--git-blame-file-main (buffer-file-name)))
               (org-history-debug-print "org-history-outline--add-dates N4sync" org-history-outline--git-blame-cache)
-              (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache)
+              (org-history-outline--process-tasks head-markers org-history-outline--git-blame-cache)
               (setq org-history-outline--git-last-commit commit-hash))))
       ;; else - ;; Case 3: use cache
       (org-history-debug-print "org-history-outline--add-dates N5")
       (unless org-history-outline--git-blame-cache
         (error "Internal error org-history-outline--git-blame-cache should set" ))
-      (org-history-outline--process-tasks tasks org-history-outline--git-blame-cache))))
+      (org-history-outline--process-tasks head-markers org-history-outline--git-blame-cache))))
 
 
 ;;; provide

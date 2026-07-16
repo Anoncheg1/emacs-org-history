@@ -7,7 +7,7 @@
 
 Track and display modification dates automatically in `org-mode` buffers with this minor mode.
 
-It uses Git version control to make automatic commits whenever you save a buffer.
+It uses Git version control to make automatic commits whenever you save a buffer (per-day with --amend).
 
 A special feature allows auto-enabling the mode for all files in specified directories by using `.dir-locals.el`, removing the need to manually list tracked files.
 
@@ -54,11 +54,6 @@ Try different format for date, add to ~/.emacs:
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history2.png][Alternative format]], see above in Customization.
 
-* Special use case
-Add date to one header at unfolding, without using minor mode at all.`
-
-You can use it to show date only for specific date. For that add this line to your ~/.emacs file:
-: (advice-add 'org-cycle :around #'org-history--show-dates-at-unfold)
 * Check those packages if you like this one :)
 
 | Description                                   | URL                                                   |
@@ -179,4 +174,6 @@ You may move .dir-locals.el settings to ~/.emacs this way:
 #+end_src
 
 * Contact & Support
-Questions or issues? [[Open an issue on GitHub][https://github.com/yourusername/emacs-org-history/issues]]
+Questions or issues?
+[[Open an issue on GitHub][https://github.com/Anoncheg1/emacs-org-history/issues]]
+[[Open an issue or Codeberg][https://codeberg.org/Anoncheg/emacs-org-history/issues]]

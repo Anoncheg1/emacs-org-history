@@ -64,7 +64,7 @@
 ;; - Check if file is tracked, .git should exist
 
 ;; (vc-git-root buffer-file-name)
-;; - Check if there is .git
+;; - Check if there is .git, works for directory, file or not existing file
 
 ;;;; How this works:
 
@@ -110,13 +110,15 @@
 
 ;;; Code:
 
-;; Touch: I was looking for a job for many years. They are so much pigs, you even cant imagine.
+;; Touch: Blessed is he who will take his place in the beginning. Gos. Thom. 18
 
 (require 'vc)
 (require 'vc-git)
 (require 'org)
 (require 'org-history-outline)
+(require 'org-history-dirl)
 (require 'org-history-debug)
+
 
 ;; -=-= Variables
 
@@ -272,135 +274,18 @@ Uses `default-directory'."
         (error nil)))))
 
 ;; -=-= function: add record to .dir-locals.el
-;; ----------------------- append-after-save ---------------
-;; [Original Config] ---> Extract 'org-mode entries (File A's rules)
-;;                              |
-;;                              v
-;;                      Add File B's new rule to the list
-;;                              |
-;;                              v
-;; [Strip old org-mode] -> [Insert combined rules] -> [Save file]
-;;
-;; Result .dir-locals.el example:
-;; (("folder1/file" . ((org-mode . ((mode . org-history)))))
-;;  ("folder2/otherfile" . ((org-mode . ((mode . org-history))))))
-
-
-(defun org-history--dir-locals-p (&optional rel-file-name config)
-  "Check if .dir-locals.el enables org-history-mode.
-Optionally use REL-FILE-NAME (relative to git root).
-CONFIG, if given, is the parsed .dir-locals.el."
-  (let* ((root (vc-git-root (or buffer-file-name default-directory)))
-         (rel-file-name (or rel-file-name
-                            (and buffer-file-name
-                                 (file-relative-name buffer-file-name root))))
-         (config (or config
-                     (let ((dl-file (expand-file-name ".dir-locals.el" root)))
-                       (when (file-exists-p dl-file)
-                         (with-temp-buffer
-                           (insert-file-contents dl-file)
-                           (ignore-errors (read (current-buffer))))))))
-         (file-entry (assoc rel-file-name config)))
-    (when file-entry
-      (let* ((mode-list (cdr file-entry))
-             (org-entry (assoc 'org-mode mode-list))
-             (org-vars (cdr org-entry)))
-        (and org-entry
-             (member '(mode . org-history) org-vars))))))
-
-;; (let ((default-directory (vc-git-root buffer-file-name)))
-;;   (org-history--dir-locals-p))
-
-
-(defun org-history-dir-locals-append ()
-  "Add an `org-history-mode' activation to TARGET-DIR/.dir-locals.el.
-Uses variable `buffer-file-name'.  `default-directory' variable should
- set to git root.
-Safely merges with existing mode settings without overwriting rules for
- other files.
-Return .dir-locals.el file path if added."
-  (interactive "DSelect directory for .dir-locals.el: ")
-  (unless buffer-file-name
-    (user-error "org-history: Current buffer is not visiting a file"))
-  (unless default-directory
-    (user-error "org-history: No default-directory"))
-
-  (let* ((file-path (expand-file-name ".dir-locals.el" default-directory))
-         (rel-file-name (file-name-nondirectory buffer-file-name))
-         ;; 1. Read existing config ONCE safely
-         (config (when (file-exists-p file-path)
-                   (with-temp-buffer
-                     (insert-file-contents file-path)
-                     (ignore-errors (read (current-buffer))))))
-         ;; 2. Generate the new rule
-         (new-rule `(eval . (when (and (fboundp 'org-history-mode)
-                                       buffer-file-name
-                                       (file-equal-p (file-name-nondirectory buffer-file-name)
-                                                     ,rel-file-name))
-                              (org-history-mode 1)))))
-
-    (unless (org-history--dir-locals-p rel-file-name config)
-      ;; (message ".dir-locals.el is already configured for %s" rel-file-name)
-      ;; 3. Destructive-safe update of the alist using built-in alist-get
-      (let ((org-entries (cdr (assoc 'org-mode config))))
-        (setf (alist-get 'org-mode config) (cons new-rule org-entries)))
-
-      ;; 4. Pretty-print back to file
-      (with-temp-file file-path
-        (let (print-level print-length)
-          (pp config (current-buffer))))
-      ;; track it also
-      (when (vc-root-dir)
-        (org-history--vc-add-file file-path 'Git))
-
-      (message "Successfully synchronized .dir-locals.el for %s" rel-file-name)
-      file-path)))
-
-(defun org-history-dir-locals-append ()
-  "Add org-history-mode activation in new .dir-locals.el format.
-Uses `buffer-file-name`; `default-directory` should be git root.
-Merges with existing settings."
-  (interactive)
-  (unless buffer-file-name
-    (user-error "org-history: Current buffer is not visiting a file"))
-  (let* ((git-root (vc-git-root (or buffer-file-name default-directory)))
-         (file-path (expand-file-name ".dir-locals.el" git-root))
-         (rel-file-name (file-relative-name buffer-file-name git-root))
-         ;; Read existing config, should be list of cons cells
-         (config (when (file-exists-p file-path)
-                   (with-temp-buffer
-                     (insert-file-contents file-path)
-                     (ignore-errors (read (current-buffer))))))
-         ;; Compose new entry for file (relative path)
-         (new-rule `(,rel-file-name . ((org-mode . ((mode . org-history)))))
-         ))
-    (unless (org-history--dir-locals-p rel-file-name config)
-      ;; update config
-      (let ((old-entry (assoc rel-file-name config)))
-        (if old-entry
-            ;; update existing org-mode entry
-            (let* ((mode-list (cdr old-entry))
-                   (org-entry (assoc 'org-mode mode-list)))
-              (if org-entry
-                  (unless (member '(mode . org-history) (cdr org-entry))
-                    (setcdr org-entry
-                            (append (cdr org-entry) '((mode . org-history)))))
-                ;; add org-mode entry
-                (push '(org-mode . ((mode . org-history))) mode-list))
-              ;; update the file entry with new mode-list
-              (setcdr old-entry mode-list))
-          ;; if no entry for file, add one
-          (push new-rule config)))
-      ;; write back
-      (with-temp-file file-path
-        (let (print-level print-length)
-          (pp config (current-buffer))))
-      (when (vc-root-dir)
-        (org-history--vc-add-file file-path 'Git))
-      (message "Successfully updated .dir-locals.el for %s" rel-file-name)
-      file-path)))
+(defun org-history--append-to-dirl ()
+  "Wrap `org-history-dirl-append' function.
+Check `org-history-dir-locals-flag' varianble and add .dir-locals.el to
+ git.
+Use `default-directory'."
+  (when org-history-dir-locals-flag
+    (when-let* ((dirl-path (org-history-dirl-append))
+                (default-directory (vc-root-dir)))
+      (org-history--vc-add-file dirl-path 'Git))))
 
 ;; -=-= functions: init .git
+
 
 (defun org-history-git-init (&optional first-file)
   "Execute the custom Git initialization commands sequentially.
@@ -433,8 +318,7 @@ Use `default-directory'."
                         ))
                     default-directory)))
       ;; Create  .dir-locals.el
-      (when org-history-dir-locals-flag
-        (org-history-dir-locals-append))
+      (org-history--append-to-dirl)
 
       ;; Create  .gitignore
       (when (not (file-exists-p ".gitignore"))
@@ -528,14 +412,15 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
   (interactive)
   (org-history-debug-print "org-history-add-dates %s %s" page-beg page-end)
   ;; if not checked that commit exist error: gethash(4 nil) error in `org-history-outline--process-tasks'
-    (let (tasks)
+    (let (head-markers)
       (save-excursion
+        ;; go to the top of page or range
         (goto-char (or page-beg (point-min)))
-        ;; Ensure we start at the first heading
+        ;; go to the first heading
         (unless (org-at-heading-p)
           (outline-next-heading))
 
-        ;; PHASE 1: Collect coordinates without touching Git or overlays
+        ;; Loop over visible headers and store its begining positions
         (while (and (not (eobp))
                     (if page-end (< (point) page-end) t))
           (unless (org-fold-core-get-folding-spec 'headline (point))
@@ -547,13 +432,13 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
             ;;        )
               ;; Push a task tuple: (heading-marker start-line end-line)
               ;; Using a marker ensures the position stays accurate even if the buffer shifts
-            (push (copy-marker (1+ (point))) tasks)) ; position of begining of heading +1
+            (push (copy-marker (1+ (point))) head-markers)) ; position of begining of heading +1
           (outline-next-heading)))
 
-      ;; PHASE 2: Process the collected list
-      (when tasks
+      ;; apply using git blame hash.
+      (when head-markers
         (when-let ((commit-hash (org-history--vc-git-get-last-commit-hash buffer-file-name)))
-          (org-history-outline--add-dates (nreverse tasks) commit-hash (unless (or page-beg page-end) t))))))
+          (org-history-outline--add-dates (nreverse head-markers) commit-hash (unless (or page-beg page-end) t))))))
 
 ;; -=-= hook: after-save
 (defun org-history-hook-for-after-save ()
@@ -596,7 +481,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
             (org-history-debug-print "org-history-hook-for-after-save Case 2")
             ;; 1. Ensure we have a tracking decision if we don't already
             (if (not (or org-history-answer-was-given ; 1
-                         (org-history--dir-locals-p rel-file-name))) ; 2
+                         (org-history-dirl--dir-locals-p rel-file-name))) ; 2
               (let ((prompt (format "org-history: track this file and add record for this file in\n%s? "
                                     (expand-file-name ".dir-locals.el" default-directory))))
                 (setq org-history-answer-was-given (if (y-or-n-p prompt) 'track-file 'dont-track-file)))
@@ -606,7 +491,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
             (when (and org-history-dir-locals-flag
                        (not before-answer)
                        (eq org-history-answer-was-given 'track-file))
-              (org-history-dir-locals-append))
+              (org-history--append-to-dirl))
             ;; 2. Execute updated commit routine (passes the message forward) - always
             (org-history--commit file-last-commit-message)
             ;; (unless org-history-hide-dates-flag
@@ -619,7 +504,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
             (org-history-debug-print "org-history-hook-for-after-save Case 3")
             ;; 1. Ensure we have a clear tracking decision
             (if (not (or org-history-answer-was-given ; 1
-                         (org-history--dir-locals-p rel-file-name))) ; 2 - ask only if
+                         (org-history-dirl--dir-locals-p rel-file-name))) ; 2 - ask only if
                 (let ((prompt-msg (format "org-history: enable auto-commit on save this file and in\n%s? "
                                           (expand-file-name ".dir-locals.el" default-directory))))
                   (setq org-history-answer-was-given (if (y-or-n-p prompt-msg) 'track-file 'dont-track-file)))
@@ -630,7 +515,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
                        (not before-answer)
                        (eq org-history-answer-was-given 'track-file))
               ;; Create  .dir-locals.el
-              (org-history-dir-locals-append))
+              (org-history--append-to-dirl))
 
             ;; 3. if tracking do commit
             (when (eq org-history-answer-was-given 'track-file)

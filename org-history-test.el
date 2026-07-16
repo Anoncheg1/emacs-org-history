@@ -11,6 +11,7 @@
 (require 'cl-lib)
 (require 'vc-git)
 (require 'org-history)
+(require 'org-history-dirl)
 (require 'org-history-debug)
 
 
@@ -20,7 +21,7 @@
 
 ;;; Code:
 
-(setopt org-history-debug-ert-enabled nil)
+(setopt org-history-debug-ert-enabled t)
         ;; (not org-history-debug-buffer))
 
 ;; -=-= helping macro
@@ -42,7 +43,7 @@ Optional argument BODY sd."
                       ;; ((symbol-function 'org-history-debug-print) #'ignore)
                       ;; ((symbol-function 'org-history-git-init) #'ignore)
                       ((symbol-function 'org-history-add-dates) #'ignore)
-                      ((symbol-function 'org-history-dir-locals-append) #'ignore)
+                      ((symbol-function 'org-history-dirl-append) #'ignore)
                       ;; ((symbol-function 'org-history--commit) #'ignore)
                       )
              ,@body))
@@ -165,7 +166,7 @@ Optional argument BODY sd."
 ;;                 ;; Updated to match the new signature and date-stamped expected output
 ;;                 ((symbol-function 'org-history--git-get-last-commit-message)
 ;;                  (lambda (&rest _) "org-history 2026-06-12: regular backup"))
-;;                 ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t)) ;; dir-locals already present
+;;                 ((symbol-function 'org-history-dirl--dir-locals-p) (lambda (&rest _) t)) ;; dir-locals already present
 ;;                 ;; Updated parameter tracking from date to message string
 ;;                 ((symbol-function 'org-history--commit) (lambda (msg) (setq commit-called-with msg))))
 ;;         (let ((org-history-answer-was-given 'track-file))
@@ -185,7 +186,7 @@ Optional argument BODY sd."
                   ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
                   ((symbol-function 'org-history--git-get-last-commit-message)
                    (lambda (&rest _) "org-history 2026-06-12: regular backup"))
-                  ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t))
+                  ((symbol-function 'org-history-dirl--dir-locals-p) (lambda (&rest _) t))
                   ((symbol-function 'org-history--commit) (lambda (msg) (setq commit-called-with msg))))
           (let ((org-history-answer-was-given 'track-file))
             (org-history-hook-for-after-save)
@@ -224,7 +225,7 @@ Optional argument BODY sd."
           (cl-letf (((symbol-function 'vc-git-root) (lambda (&rest _) temp-dir))
                     ((symbol-function 'vc-backend) (lambda (&rest _) 'Git))
                     ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-12"))
-                    ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t))
+                    ((symbol-function 'org-history-dirl--dir-locals-p) (lambda (&rest _) t))
                     ;; Inject the specific mock message for this iteration
                     ((symbol-function 'org-history--git-get-last-commit-message)
                      (lambda (&rest _) (plist-get tc :mock-msg)))
@@ -263,7 +264,7 @@ Optional argument BODY sd."
                 ((symbol-function 'format-time-string) (lambda (&rest _) "2026-06-13")) ;; Next Day
                 ((symbol-function 'org-history--vc-git-get-last-commit-date) (lambda (&rest _) "2026-06-12"))
                 ((symbol-function 'org-history--git-get-last-commit-message) (lambda (&rest _) "org-history: day 1 tracking"))
-                ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) t))
+                ((symbol-function 'org-history-dirl--dir-locals-p) (lambda (&rest _) t))
                 ((symbol-function 'org-history--commit) (lambda (&rest _) (setq commit-called t))))
 
         (let ((org-history-answer-was-given 'track-file))
@@ -470,8 +471,8 @@ Verify that an untracked file in an existing Git repository falls into
             (cl-letf* (;; Isolate debug tracking prints
                        ((symbol-function 'org-history-debug-print) #'ignore)
                        ;; Prevent real directory structures mutation inside our test
-                       ((symbol-function 'org-history--dir-locals-p) (lambda (&rest _) nil))
-                       ((symbol-function 'org-history-dir-locals-append) #'ignore)
+                       ((symbol-function 'org-history-dirl--dir-locals-p) (lambda (&rest _) nil))
+                       ((symbol-function 'org-history-dirl-append) #'ignore)
                        ((symbol-function 'org-history-add-dates) #'ignore)
                        ;; Track when the commit command is triggered by the hook
                        ((symbol-function 'org-history--commit) (lambda (date) (setq commit-executed-date (or date 'triggered))))
@@ -500,28 +501,6 @@ Verify that an untracked file in an existing Git repository falls into
 
 
 
-(ert-deftest org-history-test--my-append-existing-dir-locals ()
-  (let* ((temp-dir (file-name-as-directory (make-temp-file "ert-test-" t)))
-         (target-file (expand-file-name ".dir-locals.el" temp-dir))
-         (dummy-file (expand-file-name "dummy.org" temp-dir))
-         (initial-config '((python-mode . ((python-indent-offset . 4)))
-                           (org-mode . ((org-todo-keywords . ("TODO" "DONE")))))))
-    (unwind-protect
-        (progn
-          (with-temp-file target-file (pp initial-config (current-buffer)))
-          (find-file dummy-file)
-          (let ((default-directory temp-dir))
-            (org-history-dir-locals-append))
-          (with-temp-buffer
-            (insert-file-contents target-file)
-            (let ((result (read (current-buffer))))
-              (should (equal (cdr (assoc 'python-mode result))
-                             '((python-indent-offset . 4))))
-              (should (member '(org-todo-keywords . ("TODO" "DONE"))
-                              (cdr (assoc 'org-mode result)))))))
-      (when (get-file-buffer dummy-file)
-        (kill-buffer (get-file-buffer dummy-file)))
-      (delete-directory temp-dir t))))
 
 (ert-deftest org-history-test--append-after-save-to-dir-locals ()
   (let* ((temp-dir (make-temp-file "org-history-test-" t))
@@ -531,7 +510,7 @@ Verify that an untracked file in an existing Git repository falls into
         (progn
           (find-file dummy-file)
           (let* ((default-directory temp-dir)
-                 (result-path (org-history-dir-locals-append)))
+                 (result-path (org-history-dirl-append)))
             (should (string= result-path expected-file))
             (should (file-exists-p expected-file))
             (with-temp-buffer
@@ -759,7 +738,7 @@ Robust: Verify Case 2's transparent commit vs prompt fork using actual
               ;; Scenario A: Real .dir-locals.el file IS PRESENT on disk
               ;; -----------------------------------------------------------
               (with-temp-file dir-locals-file
-                (insert "((org-mode . ((org-history-mode . t))))"))
+                (insert "((org-mode . ((org-history . t))))"))
 
               (let ((org-history-answer-was-given nil))
                 (org-history-hook-for-after-save)
