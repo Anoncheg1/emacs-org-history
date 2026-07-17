@@ -42,21 +42,18 @@
 ;; (add-to-list 'load-path "/path-to/emacs-org-history")
 ;; (require 'org-history)
 
-
 ;; If you dont like using .dir-locals.el, you may disable this feature
 ;;  in ~/.emacs:
 ;; (setopt org-history-dir-locals-flag nil)
 
-;;; Activation:
+;;; Activation: M-x org-history
 
-;; M-x org-history
+;;; Customization: M-x customize-group RET org-history
 
-;;; Customization:
+;; Hint: You may use "C-h ." at the end of header to get hint without
+;;  using “mouse over” to see it.
 
-;; M-x customize-group RET org-history
-
-;; Built-in Emacs alternative:
-;; M-x vc-annotate
+;; Built-in Emacs alternative: M-x vc-annotate
 
 ;; Useful code:
 
@@ -82,10 +79,11 @@
 ;;  from `org-history-outline--process-tasks' to
 ;;  `org-history-outline--process-git-blame-output'. And process all
 ;;  headers maybe.
-
 ;; - When org-history-add-dates called at opening document with some
 ;;  headers opened, it add dates to top level headers only, maybe it
 ;;  trigger to early idk
+;; - add function that allow to copy date of current header to ring as
+;;  org timestamp
 
 ;; Require 29.1 for `org-fold-folded-p'
 
@@ -274,6 +272,7 @@ Uses `default-directory'."
         (error nil)))))
 
 ;; -=-= function: add record to .dir-locals.el
+
 (defun org-history--append-to-dirl ()
   "Wrap `org-history-dirl-append' function.
 Check `org-history-dir-locals-flag' varianble and add .dir-locals.el to
@@ -285,7 +284,6 @@ Use `default-directory'."
       (org-history--vc-add-file dirl-path 'Git))))
 
 ;; -=-= functions: init .git
-
 
 (defun org-history-git-init (&optional first-file)
   "Execute the custom Git initialization commands sequentially.
@@ -406,6 +404,7 @@ Assumes tracking confirmation has already been validated and set."
         (message "VC-Git: Created new date-stamped commit.")))))
 
 ;; -=-= Attach-date
+
 (defun org-history-add-dates (&optional page-beg page-end)
   "Collect line ranges for visible Org headings and apply dates separately.
 Optional arguments PAGE-BEG PAGE-END are position in current buffer."
@@ -441,6 +440,7 @@ Optional arguments PAGE-BEG PAGE-END are position in current buffer."
           (org-history-outline--add-dates (nreverse head-markers) commit-hash (unless (or page-beg page-end) t))))))
 
 ;; -=-= hook: after-save
+
 (defun org-history-hook-for-after-save ()
   "Hook for `org-mode' buffers run after saving a file."
   (org-history-debug-print "org-history-hook-for-after-save N1")
@@ -661,8 +661,6 @@ STATE may be `overview', `contents', or `all'."
 ;;                (when (file-equal-p dir path)
 ;;                  (throw 'found t)))
 ;;              nil))))
-
-
 
 ;;; provide
 

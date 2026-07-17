@@ -11,7 +11,7 @@
 (require 'cl-lib)
 (require 'org-history-dirl)
 
-(setopt org-history-debug-ert-enabled t)
+(setopt org-history-debug-ert-enabled nil)
 ;;; Code:
 
 (defconst org-history--mock-per-file

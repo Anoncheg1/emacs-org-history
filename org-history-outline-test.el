@@ -50,9 +50,15 @@
         (should (hash-table-p org-history-outline--git-blame-cache))
 
         (goto-char (point-min))
-        (let ((ovs (overlays-at (1- (line-end-position)))))
-          (should ovs)
-          (should (eq (overlay-get (car ovs) 'identity) 'my-org-date)))))))
+        (let* ((ovs-line1 (overlays-at (1- (line-end-position))))
+               (ovs1 (nth 0 ovs-line1))
+               (ovs2 (nth 1 ovs-line1)))
+          ;; (print (overlay-get (car ovs-line1) 'identity))))))
+          (should ovs-line1)
+          (should ovs1)
+          (should ovs2)
+          (should (eq (overlay-get ovs1 'identity) 'org-history-hint))
+          (should (eq (overlay-get ovs2 'identity) 'org-history-date)))))))
 
 (ert-deftest test-org-history-outline--add-dates-async-large-file ()
   "Test `org-history-outline--add-dates' handling when file size exceeds 200KB."
@@ -92,9 +98,15 @@
         (should (string-equal org-history-outline--git-last-commit mock-commit))
 
         (goto-char (point-min))
-        (let ((ovs-line1 (overlays-at (1- (line-end-position)))))
+        (let* ((ovs-line1 (overlays-at (1- (line-end-position))))
+               (ovs1 (nth 0 ovs-line1))
+               (ovs2 (nth 1 ovs-line1)))
+          ;; (print (overlay-get (car ovs-line1) 'identity))))))
           (should ovs-line1)
-          (should (eq (overlay-get (car ovs-line1) 'identity) 'my-org-date)))))))
+          (should ovs1)
+          (should ovs2)
+          (should (eq (overlay-get ovs1 'identity) 'org-history-hint))
+          (should (eq (overlay-get ovs2 'identity) 'org-history-date)))))))
 
 
 (ert-deftest test-org-history-outline--add-dates-hit-cache ()
@@ -126,9 +138,15 @@
 
         ;; VERIFICATION: Confirm that the overlay was attached cleanly from cache processing
         (goto-char (point-min))
-        (let ((ovs (overlays-at (1- (line-end-position)))))
-          (should ovs)
-          (should (eq (overlay-get (car ovs) 'identity) 'my-org-date)))))))
+        (let* ((ovs-line1 (overlays-at (1- (line-end-position))))
+               (ovs1 (nth 0 ovs-line1))
+               (ovs2 (nth 1 ovs-line1)))
+          ;; (print (overlay-get (car ovs-line1) 'identity))))))
+          (should ovs-line1)
+          (should ovs1)
+          (should ovs2)
+          (should (eq (overlay-get ovs1 'identity) 'org-history-hint))
+          (should (eq (overlay-get ovs2 'identity) 'org-history-date)))))))
 
 
 (provide 'org-history-outline-test)

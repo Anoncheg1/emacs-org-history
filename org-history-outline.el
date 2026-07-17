@@ -35,6 +35,7 @@
 (require 'color)
 
 ;; -=-= variables
+
 (defcustom org-history-outline-max-days (* 360 2)
   "Maximum number of days to keep in the outline history.
 This value must be an integer representing the day retention threshold.
@@ -77,6 +78,7 @@ It should accept two arguments: `date-str`, `color-hex`, `days-old`
 (defvar org-history-hide-dates-flag) ; in org-history.el
 
 ;; -=-= Attach overlay
+
 (defun org-history-outline-default-render-date (date-str color-hex days-old)
   "Default formatter for the outline date overlay.
 Arguments: DATE-STR is in form of YYYY-MM-DD, COLOR-HEX is list,
@@ -100,6 +102,9 @@ Returns a propertized string with a bracketed date using COLOR-HEX."
               ;; 'intangible t
               'cursor-intangible t
               'help-echo (format "[%s]" date-str)))
+
+(defvar org-history-outline--attach-hook nil
+  "Hook run by `org-history-outline--attach-date` after putting overlays.")
 
 (defun org-history-outline--attach-date (date-str)
   "Attach overlay with date at the end header with color gradient.
@@ -136,26 +141,34 @@ Automatically deletes older date overlays on the same headline when
          (calculated-spaces (make-string padding-needed ?\s)))
 
     ;; 3. CLEANUP: Clear overlays sitting exactly on that last character slot
-    (remove-overlays lstart lend 'identity 'my-org-date)
+    (remove-overlays lstart lend 'identity 'org-history-date)
+    (remove-overlays lstart lend 'identity 'org-history-hint)
 
     ;; 4. CREATION: Render using calculated hard padding strings
     (let* ((ov (make-overlay lstart lend))
            (last-char (buffer-substring-no-properties lstart lend))
            ;; Call the user-customizable function here:
-           (date-text (funcall org-history-outline-date-render-fn date-str color-hex days-old)))
+           (date-text (funcall org-history-outline-date-render-fn date-str color-hex days-old))
+           (hint (get-text-property 0 'help-echo date-text))
+           (ov-hint (make-overlay (1- lstart) lend)))
 
-
-      (overlay-put ov 'identity 'my-org-date)
+      (overlay-put ov 'identity 'org-history-date)
       (overlay-put ov 'priority 100)
 
       ;; Concatenate the last character, the exact computed spaces, and the date.
-      (overlay-put ov 'display (concat last-char calculated-spaces date-text)))))
+      (overlay-put ov 'display (concat last-char calculated-spaces date-text))
+
+      (overlay-put ov-hint 'help-echo hint)
+      (overlay-put ov-hint 'identity 'org-history-hint)
+
+      (run-hooks 'org-history-outline--attach-hook))))
 
 
 (defun org-history-outline-clear-all-date ()
   "Instantly remove all custom date overlays from the entire buffer."
   (interactive)
-  (remove-overlays (point-min) (point-max) 'identity 'my-org-date)
+  (remove-overlays (point-min) (point-max) 'identity 'org-history-date)
+  (remove-overlays (point-min) (point-max) 'identity 'org-history-hint)
   (font-lock-flush)
   (message "Successfully cleared all header date overlays."))
 
@@ -335,6 +348,7 @@ ASYNC-CALLBACK in current buffer with rutern value above."
           (org-history-outline--process-git-blame-output))))))
 
 ;; -=-= Process-tasks
+
 (defvar-local org-history-outline--git-blame-cache nil
   "Cache for optimization: Hash table - Key is line-num, value is date-str.
 Set to return value of function
@@ -427,9 +441,7 @@ Argument BLAME-TABLE is from `org-history-outline--git-blame-cache'."
           (save-excursion
             (goto-char header-pos)
             (org-history-outline--attach-date date-str)
-            (org-history-debug-print "org-history-outline--process-tasks N42")))
-        ;; (set-marker marker nil)
-        ))))
+            (org-history-debug-print "org-history-outline--process-tasks N42")))))))
 
 (defun org-history-outline--add-dates (head-markers commit-hash &optional set-oldest)
   "Process HEAD-MARKERS instantly by pre-caching Git blame data using native loops.

@@ -21,7 +21,7 @@
 
 ;;; Code:
 
-(setopt org-history-debug-ert-enabled t)
+(setopt org-history-debug-ert-enabled nil)
         ;; (not org-history-debug-buffer))
 
 ;; -=-= helping macro

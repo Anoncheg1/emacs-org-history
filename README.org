@@ -48,7 +48,8 @@ Alternatively, enable it for specific folders using ~.dir-locals.el~:
 
 Try different format for date, add to ~/.emacs:
 : (setq org-history-outline-date-render-fn #'org-history-outline-default-render-daysold)
-
+* Hint
+You may use ~C-h .~ at the end of header to get hint without using “mouse over” to see it.
 * Screenshot
 
 [[https://raw.githubusercontent.com/Anoncheg1/public-share/main/org-history.png]]
