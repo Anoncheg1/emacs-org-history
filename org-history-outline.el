@@ -199,6 +199,7 @@ the last modification date formatted as \"YYYY-MM-DD\"."
     line-dates))
 
 ;; -=-= git-blame-file
+
 (defvar-local org-history-outline--blame-proc nil
   "Tracks the active git blame process for the current buffer.
 Set in function `org-history-outline--git-blame-file-main'")
@@ -261,45 +262,46 @@ Call CALLBACK with one argument of calling buffer if success."
                              (exit-code (process-exit-status process)))
 
                          (when (memq status '(exit signal))
-                           (condition-case err
-                               (cond
-                                ;; Case A: Process was explicitly killed (e.g. by buffer closure)
-                                ((eq status 'signal)
-                                 (message "Git blame process interrupted."))
+                           ;; Wrap everything in unwind-protect to guarantee cleanup
+                           (unwind-protect
+                               (condition-case err
+                                   (cond
+                                    ;; Case A: Process was explicitly killed (e.g. by buffer closure)
+                                    ((eq status 'signal)
+                                     (message "Git blame process interrupted."))
 
-                                ;; Case B: Target buffer died through other means
-                                ((not (buffer-live-p calling-buf))
-                                 (message "Git blame aborted: target buffer no longer exists."))
+                                    ;; Case B: Target buffer died through other means
+                                    ((not (buffer-live-p calling-buf))
+                                     (message "Git blame aborted: target buffer no longer exists."))
 
-                                ;; Case C: Git process failed with an error code
-                                ((not (zerop exit-code))
-                                 (let ((err-msg (if (buffer-live-p output-buf)
-                                                    (with-current-buffer output-buf (string-trim (buffer-string)))
-                                                  ;; (with-current-buffer output-buf (string-trim (buffer-string)))
-                                                  "Unknown Git error")))
-                                   (message "Git blame failed: %s" (if (string-empty-p err-msg) "Exit code non-zero" err-msg))))
+                                    ;; Case C: Git process failed with an error code
+                                    ((not (zerop exit-code))
+                                     (let ((err-msg (if (buffer-live-p output-buf)
+                                                        (with-current-buffer output-buf (string-trim (buffer-string)))
+                                                      ;; (with-current-buffer output-buf (string-trim (buffer-string)))
+                                                      "Unknown Git error")))
+                                       (message "Git blame failed: %s" (if (string-empty-p err-msg) "Exit code non-zero" err-msg))))
 
-                                ;; Success Case: Output parsed out of the automatically filled output-buf
-                                (t
-                                 (unless (buffer-live-p output-buf)
-                                   (error "Sentitne output-buf is not alive"))
+                                    ;; Success Case: Output parsed out of the automatically filled output-buf
+                                    (t
+                                     (unless (buffer-live-p output-buf)
+                                       (error "Sentitne output-buf is not alive"))
 
-                                 (with-current-buffer output-buf
-                                   (funcall callback calling-buf)))) ; CALLBACK!
+                                     (with-current-buffer output-buf
+                                       (funcall callback calling-buf)))) ; CALLBACK!
 
-                             ;; Universal Guard Clause for the Sentinel Logic
-                             (error
-                              (message "Blame completion error: %s" (error-message-string err)))) ; condition-case
+                                 ;; Universal Guard Clause for the Sentinel Logic
+                                 (error
+                                  (message "Blame completion error: %s" (error-message-string err)))) ; condition-case
 
-                           ;; Clean up using the lexical native lambda function
-                           (funcall cleanup-resources))))))
+                             ;; Clean up using the lexical native lambda function
+                             (funcall cleanup-resources)))))))
 
     ;; 4. BUFFER CLOSE INTERRUPT MECHANISM
     (with-current-buffer calling-buf
       (add-hook 'kill-buffer-hook
                 kill-hook
                 nil t)) ; Buffer-local hook
-
     proc))
 
 
