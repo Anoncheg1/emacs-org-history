@@ -12,15 +12,20 @@ It uses Git version control to make automatic commits whenever you save a buffer
 A special feature allows auto-enabling the mode for current opened file in current directory by using `.dir-locals.el`, removing the need to manually list tracked files.
 
 *Version: 0.5*
+* How this works?
+For every visible header, we get a range of line numbers like 21–34; from .git/, we get the last modification in this range.
 
+We put a read-only overlay on the last character of the Org header with the date.
+
+We accurately do "git commit --amend" if the current day is the day of the last commit with the "org-history" message, or just add a new commit.
+
+When saving, we check .dir-locals.el to see if there is a record for the current file and if .git exists. If not, we ask the user and add the line:
+:  ("subfolder-maybe/current-file" (org-mode (mode . org-history)))
+Which check 1) path of file relative to Git directory 2) Org mode for buffer.hich checks 1) the path of the file relative to the Git directory 2) Org mode for the buffer.
 * Features
 - Automatically commits buffer changes to a per-file Git repository in the background (using `--amend` to group daily changes)
 - Prompts for confirmation only once per file
 - Efficient performance even with large files, thanks to caching and asynchronous Git operations
-
-To .dir-locals.el we add line:
-:  ("subfolder-maybe/current-file" (org-mode (mode . org-history)))
-Which check 1) path of file relative to Git directory 2) Org mode for buffer.
 
 * Installation
 ** MELPA

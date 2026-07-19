@@ -69,8 +69,20 @@
 
 ;;;; How this works:
 
-;; We accuratelly do "git commit --amend" for same date or create new
-;;  commit if date changed.
+;; For every visible header, we get a range of line numbers like
+;; 21–34; from .git/, we get the last modification in this range.
+;; We put a read-only overlay on the last character of the Org header
+;; with the date.
+;; We accurately do "git commit --amend" if the current day is the day
+;; of the last commit with the "org-history" message, or just add a new
+;; commit.
+
+;; When saving, we check .dir-locals.el to see if there is a record
+;; for the current file and if .git exists. If not, we ask the user and
+;; add the line:
+;; ("subfolder-maybe/current-file" (org-mode (mode . org-history)))
+;; Which checks 1) the path of the file relative to the Git directory
+;; 2) Org mode for the buffer.
 
 ;;; TODO:
 
