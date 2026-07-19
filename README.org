@@ -9,7 +9,7 @@ Track and display modification dates automatically in `org-mode` buffers with th
 
 It uses Git version control to make automatic commits whenever you save a buffer (per-day with --amend).
 
-A special feature allows auto-enabling the mode for all files in specified directories by using `.dir-locals.el`, removing the need to manually list tracked files.
+A special feature allows auto-enabling the mode for current opened file in current directory by using `.dir-locals.el`, removing the need to manually list tracked files.
 
 *Version: 0.5*
 
@@ -17,6 +17,10 @@ A special feature allows auto-enabling the mode for all files in specified direc
 - Automatically commits buffer changes to a per-file Git repository in the background (using `--amend` to group daily changes)
 - Prompts for confirmation only once per file
 - Efficient performance even with large files, thanks to caching and asynchronous Git operations
+
+To .dir-locals.el we add line:
+:  ("subfolder-maybe/current-file" (org-mode (mode . org-history)))
+Which check 1) path of file relative to Git directory 2) Org mode for buffer.
 
 * Installation
 ** MELPA
@@ -28,7 +32,6 @@ Clone the repository and add it to your `load-path`:
 (add-to-list 'load-path "/path/to/emacs-org-history/")
 (require 'org-history)
 #+end_src
-
 
 * Activation:
 Per file:
@@ -126,8 +129,11 @@ Format of .dir-locals.el:
 ((MAJOR-MODE . ((VARIABLE . VALUE)
                 (VARIABLE . VALUE)))
  ;; Comments allowed
- (SUBDIRECTORY-STRING . ((MAJOR-MODE . ((VARIABLE . VALUE))))))
+ (SUBDIRECTORY-STRING . ((MAJOR-MODE . ((VARIABLE . VALUE)))))
+ ;; List of variables may be just a single cons.
+ (MAJOR-MODE . (VARIABLE . VALUE)))
 #+end_src
+
 It is exactly *one alist*.
 
 Emacs provide *Pseudo-Variables*:

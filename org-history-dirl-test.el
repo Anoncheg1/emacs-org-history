@@ -14,8 +14,14 @@
 (setopt org-history-debug-ert-enabled nil)
 ;;; Code:
 
-(defconst org-history--mock-per-file
+(defconst org-history--mock-per-file1
   '(("folder1/file"     ((org-mode . ((mode . org-history)))))))
+
+(defconst org-history--mock-per-file2
+  '(("folder1/file"     (org-mode . ((mode . org-history))))))
+
+(defconst org-history--mock-per-file3
+  '(("folder1/file"     (org-mode . (mode . org-history)))))
 
 (defconst org-history--mock-per-mode
   '((org-mode . ((mode . org-history)))))
@@ -46,14 +52,28 @@
 ;; =============================================================================
 ;; ERT Tests
 ;; =============================================================================
+(ert-deftest  org-history-dirl-test--dir-locals-all-entries ()
+    (should-not (org-history-dirl--filter-list-by-car 'org-mode org-history--mock-per-file1))
+    (should (equal (org-history-dirl--filter-list-by-car 'org-mode org-history--mock-per-mode)
+                   '((mode . org-history)))))
+
+(ert-deftest org-history-dirl-test--contains-mode-p ()
+  (should (org-history-dirl--contains-mode-p '(org-mode . (mode . org-history)) 'org-mode 'org-history))
+  (should (org-history-dirl--contains-mode-p '(org-mode . ((mode . org-history))) 'org-mode 'org-history))
+  (should (org-history-dirl--contains-mode-p '((org-mode . (mode . org-history))) 'org-mode 'org-history))
+  (should (org-history-dirl--contains-mode-p '((org-mode . ((mode . org-history)))) 'org-mode 'org-history)))
 
 (ert-deftest org-history-dirl-test--dir-locals-per-file-test ()
   ;; (assoc  'org-mode '((org-mode (mode . org-history))))
-  (should (org-history-dirl--contains-mode-p '((org-mode (mode . org-history))) 'org-mode 'org-history))
+
   ;; Positive cases
-  (should (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-per-file))
+  (should (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-per-file1))
+  (should (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-per-file2))
+  (should (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-per-file3))
   ;; Negative cases
-  (should-not (org-history-dirl--dir-locals-p "otherfile" org-history--mock-per-file))
+  (should-not (org-history-dirl--dir-locals-p "otherfile" org-history--mock-per-file1))
+  (should-not (org-history-dirl--dir-locals-p "otherfile" org-history--mock-per-file2))
+  (should-not (org-history-dirl--dir-locals-p "otherfile" org-history--mock-per-file3))
   (should-not (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-wrong-minor-mode)))
 
 (ert-deftest org-history-dirl-test--locals-per-mode-test ()
@@ -72,9 +92,9 @@
 
 (ert-deftest org-history-dirl-test--locals-all-cases-per-file ()
   ;; Positive cases
-  (should (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-per-file))
+  (should (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-per-file1))
   ;; Negative cases
-  (should-not (org-history-dirl--dir-locals-p "otherfile"    org-history--mock-per-file))
+  (should-not (org-history-dirl--dir-locals-p "otherfile"    org-history--mock-per-file1))
   (should-not (org-history-dirl--dir-locals-p "folder1/file" org-history--mock-wrong-major-mode)))
 
 (ert-deftest org-history-dirl-test--locals-all-cases-per-mode ()
@@ -145,6 +165,8 @@
       (when (get-file-buffer target-file)
         (kill-buffer (get-file-buffer target-file)))
       (delete-directory temp-dir t))))
+
+;; -=-=
 
 (provide 'org-history-dirl-test)
 

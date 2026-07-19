@@ -55,18 +55,11 @@
 ;; ((org-mode (mode . org-history)) ; Per-mode entry
 ;;  (nil (mode . org-history))) ; Default (nil) entry
 
-(defun org-history--dir-locals-all-entries (key config)
+(defun org-history-dirl--filter-list-by-car (key config)
   "Return all entries in CONFIG matching KEY."
-  (org-history-debug-print "org-history--dir-locals-all-entries %s %s" key config)
+  (org-history-debug-print "org-history-dirl--filter-list-by-car %s %s" key config)
   ;; cl-remove-if-not?
   (mapcar #'cadr (seq-filter (lambda (item) (equal (car item) key)) config)))
-;; (defun org-history--dir-locals-all-entries (key config)
-;;   "Return all entries in CONFIG matching KEY."
-;;   (let (result)
-;;     (dolist (item config)
-;;       (when (equal (car item) key)
-;;         (push item result)))
-;;     (nreverse result)))
 
 
 (defun org-history-dirl--contains-mode-p (entries majormode minormode)
@@ -76,21 +69,34 @@ Argument MAJORMODE - one of entry may be cons with sub-alist associated
  for MAJORMODE.
 Argument MINORMODE - is mode that what search to be activated with
  pseudo-variable \='mode."
-  (org-history-debug-print "org-history-dirl--contains-mode-p N1 %s" entries majormode minormode)
+  (org-history-debug-print "org-history-dirl--contains-mode-p N0 %s" entries majormode minormode)
   (cond
-   ;; Case 1: A proper list of settings '((mode . org-history))
+   ;; Case 1: A proper list: '((mode . org-history)) or '((org-mode . ((mode . org-history)))) or '((org-mode . (mode . org-history)))
    ((when (proper-list-p entries)
-      (cl-some (lambda (v)
-                 (org-history-debug-print "org-history-dirl--contains-mode-p N2 %s" v)
-                 (equal v (cons 'mode minormode)))
+      (cl-some (lambda (val)
+                 (org-history-debug-print "org-history-dirl--contains-mode-p N1 %s" val)
+                 (org-history-dirl--contains-mode-p val majormode minormode)) ; Recursive call
                entries)))
-   ;; Case 2: '((org-mode . ((mode . org-history))))
-   ((when-let ((majormode-entry (assoc majormode entries)))
-     (org-history-debug-print "org-history-dirl--contains-mode-p N30 %s" majormode-entry)
-     (when (proper-list-p majormode-entry)
-       (cl-some (lambda (v)
-                  (org-history-debug-print "org-history-dirl--contains-mode-p N3 %s" v (cons 'mode 'minormode))
-                  (equal v (cons 'mode minormode))) majormode-entry))))
+   ;; continue if not found
+   ;; Case 2: Cons '(mode . org-history)
+   ((when (consp entries)
+      (org-history-debug-print "org-history-dirl--contains-mode-p N2 %s" entries)
+      (equal entries (cons 'mode minormode))))
+   ;; continue if not found
+   ;; Case 3: '(org-mode . ((mode . org-history))) or  '(org-mode . (mode . org-history))
+   ((when (and (consp entries)
+               (equal (car entries) majormode))
+      (org-history-debug-print "org-history-dirl--contains-mode-p N3 %s" entries)
+      (if (proper-list-p (cdr entries))
+          (progn
+            (org-history-debug-print "org-history-dirl--contains-mode-p N31 %s" (cdr entries))
+            (cl-some (lambda (val)
+                       (org-history-dirl--contains-mode-p val majormode minormode)) ; Recursive call
+                     (cdr entries)))
+        ;; else
+        (org-history-debug-print "org-history-dirl--contains-mode-p N32 %s" entries)
+        (equal (cdr entries) (cons 'mode minormode)))))
+
    ;; default
    (t nil)))
 
@@ -110,12 +116,8 @@ Argument MINORMODE - is mode that what search to be activated with
   (cl-some
    (lambda (entry)
      (org-history-debug-print "org-history-dirl--dir-locals-per-file-p N2 %s" entry)
-     (org-history-dirl--contains-mode-p (if (proper-list-p entry)
-                                            entry
-                                          ;; else
-                                          (list entry))
-                                        majormode minormode))
-   (org-history--dir-locals-all-entries rel-file-name config)))
+     (org-history-dirl--contains-mode-p entry majormode minormode))
+   (org-history-dirl--filter-list-by-car rel-file-name config)))
 
 
 ;; ## 4. Main function
@@ -136,9 +138,11 @@ Uses REL-FILE-NAME (relative to git root) or variable `buffer-file-name'
                          (with-temp-buffer
                            (insert-file-contents dl-file)
                            (ignore-errors (read (current-buffer)))))))))
-    (org-history-debug-print "org-history-dirl--dir-locals-p" config)
-    (or (org-history-dirl--contains-mode-p config majormode minormode) ; Per-mode entry
+    (org-history-debug-print "org-history-dirl--dir-locals-p N1" rel-file-name config)
+    (or (org-history-dirl--contains-mode-p (org-history-dirl--filter-list-by-car majormode config) majormode minormode) ; Per-mode entry
+        (not (org-history-debug-print "org-history-dirl--dir-locals-p N2"))
         (org-history-dirl--dir-locals-per-file-p rel-file-name config majormode minormode) ; Per-file
+        (not (org-history-debug-print "org-history-dirl--dir-locals-p N3"))
         (org-history-dirl--dir-locals-per-file-p nil config majormode minormode)))) ; per-folder Default (nil) entry
 
 ;; (let ((default-directory (vc-git-root buffer-file-name)))

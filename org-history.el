@@ -31,13 +31,25 @@
 
 ;;; Commentary:
 
-;; This package allows to:
-;; 1) Attach the dates of the last modification to Org headers as non-editable overlays.
-;; 2) Auto-commit with --amend once per day.
-;; 3) Request your confirmation only once.
-;; 4) Accurately save your answer to the .dir-locals.el file in the current directory.
+;; Track and display modification dates automatically in `org-mode`
+;; buffers with this minor mode.
 
-;;; Configuration:
+;; It uses Git version control to make automatic commits whenever you
+;; save a buffer (per-day with --amend).
+
+;; A special feature allows auto-enabling the mode for current opened
+;; file in current directory by using `.dir-locals.el`, removing the
+;; need to manually list tracked files.
+
+;;;; Features:
+
+;; - Automatically commits buffer changes to a per-file Git repository
+;; in the background (using `--amend` to group daily changes)
+;; - Prompts for confirmation only once per file
+;; - Efficient performance even with large files, thanks to caching
+;; and asynchronous Git operations
+
+;;;; Configuration:
 
 ;; (add-to-list 'load-path "/path-to/emacs-org-history")
 ;; (require 'org-history)
@@ -46,22 +58,14 @@
 ;;  in ~/.emacs:
 ;; (setopt org-history-dir-locals-flag nil)
 
-;;; Activation: M-x org-history
+;;;; Activation: M-x org-history
 
-;;; Customization: M-x customize-group RET org-history
+;;;; Customization: M-x customize-group RET org-history
 
 ;; Hint: You may use "C-h ." at the end of header to get hint without
 ;;  using “mouse over” to see it.
 
 ;; Built-in Emacs alternative: M-x vc-annotate
-
-;; Useful code:
-
-;; (vc-backend buffer-file-name) or (vc-root-dir)
-;; - Check if file is tracked, .git should exist
-
-;; (vc-git-root buffer-file-name)
-;; - Check if there is .git, works for directory, file or not existing file
 
 ;;;; How this works:
 
@@ -109,6 +113,14 @@
 ;;; Code:
 
 ;; Touch: Blessed is he who will take his place in the beginning. Gos. Thom. 18
+
+;;;; Useful code:
+
+;; (vc-backend buffer-file-name) or (vc-root-dir)
+;; - Check if file is tracked, .git should exist
+
+;; (vc-git-root buffer-file-name)
+;; - Check if there is .git, works for directory, file or not existing file
 
 (require 'vc)
 (require 'vc-git)
