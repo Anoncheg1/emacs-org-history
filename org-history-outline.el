@@ -87,7 +87,7 @@ Returns a propertized string with a bracketed date using COLOR-HEX."
   (propertize (format "[%s]" date-str)
               'face `(:foreground ,color-hex :weight bold)
               'help-echo (format "Age: %d days old" days-old)
-              'read-only t
+              'read-only nil
               ;; 'intangible t
               'cursor-intangible t))
 
@@ -98,7 +98,7 @@ Arguments: DATE-STR is in form of YYYY-MM-DD, COLOR-HEX is list,
 Returns a propertized string with a bracketed date using COLOR-HEX."
   (propertize (format "☼ %d days old" days-old)
               'face `(:foreground ,color-hex)
-              'read-only t
+              'read-only nil
               ;; 'intangible t
               'cursor-intangible t
               'help-echo (format "[%s]" date-str)))
