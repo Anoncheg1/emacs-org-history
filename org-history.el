@@ -78,7 +78,7 @@
 ;; commit.
 
 ;; When saving, we check .dir-locals.el to see if there is a record
-;; for the current file and if .git exists. If not, we ask the user and
+;; for the current file and if .git exists.  If not, we ask the user and
 ;; add the line:
 ;; ("subfolder-maybe/current-file" (org-mode (mode . org-history)))
 ;; Which checks 1) the path of the file relative to the Git directory
@@ -98,8 +98,6 @@
 ;; - When org-history-add-dates called at opening document with some
 ;;  headers opened, it add dates to top level headers only, maybe it
 ;;  trigger to early idk
-;; - add function that allow to copy date of current header to ring as
-;;  org timestamp
 
 ;; Require 29.1 for `org-fold-folded-p'
 
